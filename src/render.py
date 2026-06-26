@@ -43,7 +43,7 @@ def compute_window_size(zones) -> tuple[int, int]:
     max_x = max(z.x for z in zones)
     max_y = max(z.y for z in zones)
     min_y = min(z.y for z in zones)  # y can be negative
-    width = (max_x + 1) * SCALE + 2 * MARGIN
+    width = (max_x) * SCALE + 2 * MARGIN
     height = (max_y - min_y + 1) * SCALE + 2 * MARGIN
     return (width, height)
 
