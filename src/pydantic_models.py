@@ -1,6 +1,7 @@
 from pydantic import BaseModel, field_validator, model_validator
 from typing import Literal
 
+
 class ZoneModel(BaseModel):
     name: str
     x: int
