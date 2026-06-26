@@ -1,12 +1,13 @@
 import sys
 from enum import Enum
+from dataclasses import dataclass
 from pathlib import Path
-
-# from pydantic_models import MapModel, ZoneModel, ConnectionModel
 
 import pygame
 import pygame.freetype
 from pygame.sprite import Sprite
+
+import os
 
 # ── Paths ───────────────────────────────────────────────────────────────
 MAPS_DIR = Path(__file__).parent.parent / "maps"
@@ -22,23 +23,121 @@ LIGHT_BLUE = (106, 159, 181)
 
 MENU_SCREEN_SIZE = (800, 600)
 
-
 # ── Helpers ──────────────────────────────────────────────────────────────
+SCALE = 150
+MARGIN = 80
+HUB_RADIUS = 30
+
+
+@dataclass
+class Zone:
+    name: str
+    x: int
+    y: int
+    zone_type: str = "normal"
+    color: str = "gray"
+    max_drones: int = 1
+
+
+def compute_window_size(zones) -> tuple[int, int]:
+    max_x = max(z.x for z in zones)
+    max_y = max(z.y for z in zones)
+    min_y = min(z.y for z in zones)  # y can be negative
+    width = (max_x + 1) * SCALE + 2 * MARGIN
+    height = (max_y - min_y + 1) * SCALE + 2 * MARGIN
+    return (width, height)
+
+
+def compute_offset(zones) -> tuple[int, int]:
+    max_y = max(z.y for z in zones)
+    min_y = min(z.y for z in zones)
+
+    # Centre horizontal : 0 à gauche + marge
+    offset_x = MARGIN
+
+    # Centre vertical : y=0 au milieu de la fenêtre
+    screen_height = (max_y - min_y + 1) * SCALE + 2 * MARGIN
+    offset_y = screen_height // 2  # y=0 → centre de l'écran
+
+    return (offset_x, offset_y)
+
+
 def grid_to_px(x, y, offset, scale) -> tuple[int, int]:
-    return (offset[0] + x * scale, offset[1] + y * scale)
+    return (offset[0] + x * scale, offset[1] - y * scale)
 
 
-def get_screen_size_for_map(map_name: str) -> tuple[int, int]:
-    """Return the screen size for a given map name."""
+def draw_connection(screen, zone_a, zone_b, offset):
+    """Draw a line between two zones."""
+    pos_a = grid_to_px(zone_a.x, zone_a.y, offset, SCALE)
+    pos_b = grid_to_px(zone_b.x, zone_b.y, offset, SCALE)
+    pygame.draw.line(screen, BLACK, pos_a, pos_b, 2)
+
+
+def draw_hub(screen, zone, offset, font):
+    """Draw a zone circle with its name centered inside."""
+    pos = grid_to_px(zone.x, zone.y, offset, SCALE)
+    try:
+        color = pygame.Color(zone.color)
+    except ValueError:
+        color = pygame.Color("gray")
+    pygame.draw.circle(screen, color, pos, HUB_RADIUS)
+    # pygame.draw.circle(screen, BLACK, pos, HUB_RADIUS, 2)  # outline
+    label_surf, label_rect = font.render(zone.name, BLACK)
+    # label_rect.center = pos # To center label if needed
+    label_rect.centerx = pos[0]
+    label_rect.top = pos[1] + HUB_RADIUS + 4
+    screen.blit(label_surf, label_rect)
+
+
+def find_map_path(map_name: str) -> Path:
+    """Find the .txt file path for a given display map name."""
+    filename = map_name.replace(" ", "_") + ".txt"
     for difficulty in DIFFICULTIES:
-        map_path = MAPS_DIR / difficulty / f"{map_name.replace(' ', '_')}.txt"
-        if map_path.exists():
-            with open(map_path, "r") as f:
-                lines = f.readlines()
-                width = len(lines[0].strip())
-                height = len(lines)
-                return (width * 20, height * 20)  # Scale factor of 20
-    raise ValueError(f"Map '{map_name}' not found in any difficulty folder.")
+        path = MAPS_DIR / difficulty / filename
+        if path.exists():
+            return path
+    raise FileNotFoundError(f"Map '{map_name}' not found.")
+
+
+def parse_metadata(meta_str: str) -> dict:
+    """Parse a '[key=value ...]' metadata string into a dict."""
+    return dict(
+        part.split("=", 1) for part in meta_str.strip("[] ").split()
+        if "=" in part)
+
+
+def parse_map_file(path: Path, ) -> tuple[list[Zone], list[tuple[str, str]]]:
+    """Parse a map file, return (zones, connections)."""
+    zones: list[Zone] = []
+    connections: list[tuple[str, str]] = []
+
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+
+            meta: dict = {}
+            if "[" in line:
+                meta = parse_metadata(line[line.index("["):])
+                line = line[:line.index("[")].strip()
+
+            parts = line.split()
+            if parts[0] in ("hub:", "start_hub:", "end_hub:"):
+                zones.append(
+                    Zone(
+                        name=parts[1],
+                        x=int(parts[2]),
+                        y=int(parts[3]),
+                        zone_type=meta.get("zone", "normal"),
+                        color=meta.get("color", "gray"),
+                        max_drones=int(meta.get("max_drones", 1)),
+                    ))
+            elif parts[0] == "connection:":
+                a, b = parts[1].split("-", 1)
+                connections.append((a, b))
+
+    return zones, connections
 
 
 class GameState(Enum):
@@ -61,17 +160,6 @@ def create_surface_with_text(text, font_size, text_rgb, bg_rgb):
     font = pygame.freetype.SysFont("Courier", font_size, bold=True)
     surface, _ = font.render(text=text, fgcolor=text_rgb, bgcolor=bg_rgb)
     return surface.convert_alpha()
-
-
-def get_hubs_from_map_file(map_file_path: Path) -> list[tuple[int, int]]:
-    """Read a map file and return a list of (x, y) coordinates for hubs."""
-    hubs = []
-    with open(map_file_path, "r") as f:
-        for y, line in enumerate(f):
-            for x, char in enumerate(line.strip()):
-                if char == "Z":  # Assuming 'Z' marks a hub
-                    hubs.append((x, y))
-    return hubs
 
 
 # ── UIElement ───────────────────────────────────────────────────────────
@@ -121,30 +209,6 @@ class UIElement(Sprite):
                 return self.action
         else:
             self.mouse_over = False
-
-    def draw(self, surface):
-        surface.blit(self.image, self.rect)
-
-
-class MapElement(Sprite):
-    """A map element that can be drawn on the screen."""
-
-    def __init__(self, position, size, color):
-        self.image = pygame.Surface(size)
-        self.image.fill(color)
-        self.rect = self.image.get_rect(topleft=position)
-
-    def draw(self, surface):
-        surface.blit(self.image, self.rect)
-
-
-class DroneElement(Sprite):
-    """A drone element that can be drawn on the screen."""
-
-    def __init__(self, position, size, color):
-        self.image = pygame.Surface(size)
-        self.image.fill(color)
-        self.rect = self.image.get_rect(center=position)
 
     def draw(self, surface):
         surface.blit(self.image, self.rect)
@@ -245,34 +309,26 @@ def map_select_screen(screen, difficulty: str):
 
 
 def simulation_screen(screen, map_name: str):
-    """Placeholder simulation screen. Press Escape to return to title."""
-    screen_size = get_screen_size_for_map(map_name)
-    screen = pygame.display.set_mode(screen_size)
+    """Map display screen."""
+    path = find_map_path(map_name)
+    zones, connections = parse_map_file(path)
+    zone_by_name = {z.name: z for z in zones}
 
-    RETURN_POS = (screen_size[0] - 140, screen_size[1] - 30)
+    w, h = compute_window_size(zones)
+    screen = pygame.display.set_mode((w, h))
+    pygame.display.set_caption(f"Fly-in - {map_name}")
+
+    offset = compute_offset(zones)
+    font = pygame.freetype.SysFont("Arial", 12, bold=True)
 
     return_btn = UIElement(
-        RETURN_POS,
+        (140, h - 40),
         "Return to main menu",
         20,
         WHITE,
         LIGHT_BLUE,
         action=GameState.TITLE,
     )
-
-    hubs = []
-    for difficulty in DIFFICULTIES:
-        map_path = MAPS_DIR / difficulty / f"{map_name.replace(' ', '_')}.txt"
-        if map_path.exists():
-            hubs = get_hubs_from_map_file(map_path)
-            for (x, y) in hubs:
-                px, py = grid_to_px(x, y, offset=(0, 0), scale=20)
-                hubs.append((px + 10, py + 10))  # Center of the cell
-            break
-
-    hub_elements = [
-        MapElement((px, py), (20, 20), GREEN) for (px, py) in hubs
-    ]
 
     while True:
         mouse_up = False
@@ -286,13 +342,18 @@ def simulation_screen(screen, map_name: str):
 
         screen.fill(WHITE)
 
+        for a, b in connections:
+            if a in zone_by_name and b in zone_by_name:
+                draw_connection(screen, zone_by_name[a], zone_by_name[b],
+                                offset)
+
+        for zone in zones:
+            draw_hub(screen, zone, offset, font)
+
         action = return_btn.update(pygame.mouse.get_pos(), mouse_up)
         if action is not None:
             return action
         return_btn.draw(screen)
-
-        for hub in hub_elements:
-            hub.draw(screen)
 
         pygame.display.flip()
 
@@ -310,6 +371,7 @@ def main():
     while True:
         if game_state == GameState.TITLE:
             if screen.get_size() != MENU_SCREEN_SIZE:
+                os.environ['SDL_VIDEO_CENTERED'] = '1'
                 screen = pygame.display.set_mode(MENU_SCREEN_SIZE)
             result = title_screen(screen)
             if result == GameState.QUIT:
@@ -333,48 +395,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-# # ============ MAP ============== #
-
-# background_color = WHITE
-# circle_color = RED
-
-# # Set up the display of the map with dynamic size
-# screen = pygame.display.set_mode((800, 600))
-# pygame.display.set_caption("Fly-in")
-
-# # Load potato img and scale it down
-# potato_img = pygame.image.load('potato.png').convert_alpha()
-# potato_img = pygame.transform.scale(
-#     potato_img, (potato_img.get_width() * 0.1,
-#                  potato_img.get_height() * 0.1))
-
-# # Game loop
-# running = True
-# x = 0
-# clock = pygame.time.Clock()
-
-# delta_time = 0.1
-
-# # Game loop
-# while running:
-
-#     screen.fill(background_color)
-#     screen.blit(potato_img, (x, 30))
-
-#     x += 100 * delta_time
-
-#     for event in pygame.event.get():
-#         if event.type == pygame.QUIT:
-#             running = False
-
-#     pygame.display.flip()
-
-#     delta_time = clock.tick(60) / 1000
-#     delta_time = max(0.001, min(0.1, delta_time))
-
-#     # pygame.draw.circle(screen, circle_color, (50, 50), 20)
-#     pygame.display.update()
-
-# # Quit Pygame
-# pygame.quit()
