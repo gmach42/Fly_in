@@ -2,10 +2,11 @@ class ParseError(Exception):
     def __init__(self, line_no: int, msg: str) -> None:
         super().__init__(f"Line {line_no}: {msg}")
 
+
 def parse_config(filepath: str) -> dict:
     result = {}
     with open(filepath, 'r') as file:
-        for line_no, raw in enumarate(f, start=1):
+        for line_no, raw in enumerate(file, start=1):
             line = raw.strip()
             if not line or line.startswith('#'):
                 continue
