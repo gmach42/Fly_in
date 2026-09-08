@@ -4,8 +4,6 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 ZoneType = Literal["normal", "priority", "restricted", "blocked"]
 
-# Cost (in "ticks") to move into a zone of this type. "blocked" zones are
-# infranchissable, hence the infinite cost.
 ZONE_MOVE_COST: dict[ZoneType, float] = {
     "normal": 1,
     "priority": 1,
