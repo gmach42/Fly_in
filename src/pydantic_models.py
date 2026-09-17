@@ -193,3 +193,19 @@ class Graph(BaseModel):
             if {connection.zone_a, connection.zone_b} == {zone_a, zone_b}:
                 return connection
         return None
+
+
+class Path(BaseModel):
+    """A route through the graph for a single drone.
+
+    Attributes:
+        zones: Ordered list of zone names from start to end (inclusive).
+        total_cost: Cumulative move cost of the path.
+    """
+
+    zones: list[str]
+    total_cost: float
+
+    @property
+    def length(self) -> int:
+        return len(self.zones)
