@@ -2,7 +2,7 @@ from typing import Callable
 
 from pydantic import ValidationError
 
-from pydantic_models import Connection, Graph, Zone
+from .pydantic_models import Connection, Graph, Zone
 
 
 class ParseError(Exception):

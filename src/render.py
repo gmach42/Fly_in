@@ -7,10 +7,10 @@ import pygame.freetype
 
 import os
 
-from parser import ParseError, parse_map_file
-from pathfinding import NoPathError
-from pydantic_models import Zone
-from simulation import Simulation, Step
+from .parser import ParseError, parse_map_file
+from .pathfinding import NoPathError
+from .pydantic_models import Zone
+from .simulation import Simulation, Step
 
 MAPS_DIR = Path(__file__).parent.parent / "maps"
 DRONE_IMAGE = Path(__file__).parent.parent / "potato.png"
@@ -136,7 +136,6 @@ def create_surface_with_text(
     return surface.convert_alpha()
 
 
-# ── UIElement ───────────────────────────────────────────────────────────
 class UIElement:
     """A clickable UI element that highlights on hover."""
 

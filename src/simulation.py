@@ -13,8 +13,8 @@ and link slots already reserved by the previous drones:
 
 import heapq
 
-from pathfinding import NoPathError, k_shortest_paths
-from pydantic_models import Graph, Path
+from .pathfinding import NoPathError, k_shortest_paths
+from .pydantic_models import Graph, Path
 
 MAX_PATHS = 10
 

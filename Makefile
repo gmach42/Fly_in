@@ -11,7 +11,7 @@ run:
 	$(PYTHON) -m src
 
 debug:
-	$(PYTHON) -m pdb src/__main__.py
+	$(PYTHON) -m pdb -m src
 
 test:
 	$(PYTEST)

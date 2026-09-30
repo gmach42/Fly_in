@@ -6,7 +6,7 @@ of a Graph.
 import heapq
 from math import dist
 
-from pydantic_models import Graph, Path
+from .pydantic_models import Graph, Path
 
 
 class NoPathError(Exception):
