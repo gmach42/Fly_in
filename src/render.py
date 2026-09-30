@@ -9,11 +9,9 @@ from pygame.sprite import Sprite
 
 import os
 
-# ── Paths ───────────────────────────────────────────────────────────────
 MAPS_DIR = Path(__file__).parent.parent / "maps"
 DIFFICULTIES = ["easy", "medium", "hard", "challenger"]
 
-# ── Colors ───────────────────────────────────────────────────────────────
 WHITE = (255, 255, 255)
 BLUE = (0, 0, 255)
 RED = (255, 0, 0)
@@ -23,7 +21,6 @@ LIGHT_BLUE = (106, 159, 181)
 
 MENU_SCREEN_SIZE = (800, 600)
 
-# ── Helpers ──────────────────────────────────────────────────────────────
 SCALE = 150
 MARGIN = 80
 HUB_RADIUS = 30
@@ -358,7 +355,6 @@ def simulation_screen(screen, map_name: str):
         pygame.display.flip()
 
 
-# ── Main ────────────────────────────────────────────────────────────────
 def main():
     pygame.init()
     screen = pygame.display.set_mode(MENU_SCREEN_SIZE)
