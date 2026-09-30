@@ -18,7 +18,7 @@
 - [ ] `utils.py` : reporté — les coûts de déplacement vivent déjà dans `Zone.move_cost` / `ZONE_MOVE_COST`, pas de helpers communs identifiés pour l'instant
 ### Après-midi
 - [x] `pathfinding.py` : `PathFinder.a_star` (A\* avec heapq, heuristique euclidienne admissible mise à l'échelle via `_min_cost_per_distance`), tient compte des coûts de zone, remplace le Dijkstra/BFS prévu initialement (voir note ci-dessous)
-- [x] `k_shortest_paths` : plusieurs chemins distincts en excluant une connexion du meilleur chemin trouvé à chaque itération (pas un vrai algo de Yen, mais suffisant pour easy/medium)
+- [x] `k_shortest_paths` : k plus courts chemins exacts, par ordre de coût — chaque chemin trouvé engendre un candidat par connexion exclue (variante simplifiée de Yen). L'ancienne version (exclusion de la 1re connexion seulement) ne trouvait qu'un chemin sur simple_fork, maze_nightmare et le challenger
 ### Soir
 - [ ] Tests rapides pathfinding (zone bloquée, chemin coûteux, aucun chemin possible) — validé à la main en session interactive, **pas encore en pytest**
 - [x] **Jalon :** pathfinding validé sur toutes les maps easy/medium — étendu de fait à hard/challenger aussi (10/10 maps donnent un chemin)
@@ -27,17 +27,17 @@
 
 ## Jeudi 10/09
 ### Matin
-- [ ] `simulation.py` : moteur tour par tour multi-drones, capacités zone (`max_drones`) et connexion (`max_link_capacity`)
+- [x] `simulation.py` : moteur tour par tour multi-drones, capacités zone (`max_drones`) et connexion (`max_link_capacity`), zone restricted = 2 tours (connexion occupée 2 tours, place réservée à l'arrivée), répartition des drones sur les k chemins selon coût + charge / débit du goulot
 ### Après-midi
-- [ ] Gestion des deadlocks/collisions, ordre de priorité entre drones
-- [ ] `main.py` / `src/__main__.py` : point d'entrée unique (`make run`) qui enchaîne menu → parse → simulate → render
+- [x] Gestion des deadlocks/collisions, ordre de priorité entre drones — drones les plus avancés d'abord, tour résolu en passes jusqu'à stabilité (une place libérée sert dans le même tour), `DeadlockError` si un tour passe sans aucun mouvement (détection, pas de résolution)
+- [x] `src/__main__.py` : point d'entrée (`make run`) menu → parse → simulate → render ; `python -m src <map>` = mode terminal (une ligne par tour). `main.py` à la racine reste le template uv, à supprimer ?
 ### Soir
-- [ ] Brancher la simulation dans `render.py` (remplacer `parse_map_file`/`Zone` locaux par le vrai `Graph` pydantic)
-- [ ] **Jalon :** simulation correcte en mode debug sur toutes les maps, capacités respectées
+- [x] Brancher la simulation dans `render.py` (remplacer `parse_map_file`/`Zone` locaux par le vrai `Graph` pydantic)
+- [x] **Jalon :** simulation correcte sur toutes les maps, capacités respectées — vérifié par un rejoueur indépendant (capacités zone/lien à chaque tour, connexions existantes, 2 tours en restricted). Tours : easy 4/4/4, medium 8/15/7, hard 13/16/27, challenger 47 (référence : 45)
 
 ## Vendredi 11/09 — jour de deadline
 ### Matin
-- [ ] Animation graphique des drones + feedback visuel zones bloquées/priority/restricted
+- [x] Animation graphique des drones (potato.png, interpolation entre tours, SPACE/←/→/↑/↓/R) + feedback visuel zones bloquées/priority/restricted, occupation n/max, épaisseur des liens selon capacité, échelle adaptée à l'écran
 ### Après-midi
 - [ ] Refactor de `render.py` en modules séparés si le temps le permet (sinon reporté après la deadline)
 - [ ] `flake8` + `mypy --strict` clean sur tout le projet
