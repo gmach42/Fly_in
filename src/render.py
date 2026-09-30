@@ -207,7 +207,6 @@ def create_surface_with_text(text, font_size, text_rgb, bg_rgb):
     return surface.convert_alpha()
 
 
-# ── UIElement ───────────────────────────────────────────────────────────
 class UIElement(Sprite):
     """A clickable UI element that highlights on hover."""
 

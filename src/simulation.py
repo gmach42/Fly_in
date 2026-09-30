@@ -1,46 +1,58 @@
-"""Turn-based multi-drone simulation over a Fly-in Graph.
+"""Multi-drone scheduling and turn-by-turn history for a Fly-in Graph.
 
-Each drone gets a precomputed Path (see pathfinding.k_shortest_paths) and,
-every turn, either advances one hop along it or waits. Rules enforced:
+Drones are planned one after the other (prioritized planning). Each drone
+tries every candidate route from pathfinding.k_shortest_paths and keeps
+the schedule that delivers it the earliest, given what the previous drones
+already reserved:
 
-- a zone never holds more than max_drones drones at the end of a turn
-  (start and end hubs are unlimited);
-- a connection is never used by more than max_link_capacity drones
-  during the same turn;
-- moving into a restricted zone takes 2 turns: the drone spends the first
-  one on the connection (which it keeps using on both turns) and its slot
-  in the destination is reserved as soon as it leaves, so it can never get
-  stuck halfway.
+- zone slots: drones in a zone at the end of a turn (at most max_drones;
+  start and end hubs are unlimited);
+- link slots: drones using a connection during a turn (at most
+  max_link_capacity).
 
-Moves within a turn are simultaneous: a drone leaving a zone frees its slot
-for a follower in the same turn. To get that right whatever the path
-layout, a turn is resolved in passes until no more drone can move.
+Rules from the subject, and how they map onto reservations:
+
+- a normal/priority move takes 1 turn and uses the link on that turn;
+- a restricted move takes 2 turns: the drone is on the connection at the
+  end of the first turn (it uses the link on that turn only, the link is
+  freed on the arrival turn) and MUST land on the second one, so a slot
+  in the destination has to be free at the end of that second turn;
+- a drone leaving a zone frees its slot for the same turn: only the
+  occupancy at the end of each turn is counted.
+
+Since each schedule is built against the reservations of the previous
+drones, the result can never exceed a capacity, and there is no deadlock:
+a drone can always wait in the start hub until the way is clear.
 """
+
+from collections import defaultdict
 
 from pathfinding import NoPathError, k_shortest_paths
 from pydantic_models import Drone, Graph, Path
 
-MAX_PATHS = 5
+MAX_PATHS = 10
 
 # Where a drone is at the end of a turn: (from_zone, to_zone, fraction of
 # the connection travelled). A drone sitting in a zone is (zone, zone, 0.0).
 Position = tuple[str, str, float]
 
+# A search state while scheduling one drone: (index in its path, turn).
+State = tuple[int, int]
+
 
 class DeadlockError(Exception):
-    """Raised when no drone can move but some have not arrived."""
+    """Raised when a drone cannot be scheduled within max_turns."""
 
 
 class Simulation:
-    """Runs all drones from graph.start to graph.end, turn by turn.
+    """Schedules all drones from graph.start to graph.end.
 
     Attributes:
         graph: The map.
         drones: All drones, indexed by id - 1.
-        paths: Route assigned to each drone id.
-        progress: Index in its path of the zone each drone is in (or is
-            leaving, while in transit).
-        zone_occupancy: Drones in (or reserved for) each zone.
+        candidate_paths: Routes a drone may follow, cheapest first.
+        plans: Position of each drone at the end of every turn, from turn 0
+            (in the start hub) until its delivery turn.
         turns: History, one list of move strings per turn.
         snapshots: Drone positions after each turn; snapshots[0] is the
             initial state, so len(snapshots) == len(turns) + 1.
@@ -52,203 +64,193 @@ class Simulation:
             Drone(id=i, current_zone=graph.start)
             for i in range(1, graph.nb_drones + 1)
         ]
-        self.paths: dict[int, Path] = {}
-        self.progress: dict[int, int] = {}
-        self.turns_left: dict[int, int] = {}
-        self.zone_occupancy: dict[str, int] = {graph.start: graph.nb_drones}
+        self.candidate_paths = k_shortest_paths(
+            graph, graph.start, graph.end, MAX_PATHS
+        )
+        if not self.candidate_paths:
+            raise NoPathError(
+                f"No path from {graph.start!r} to {graph.end!r}"
+            )
+        self.plans: dict[int, list[Position]] = {}
         self.turns: list[list[str]] = []
         self.snapshots: list[dict[int, Position]] = []
-        self._assign_paths()
-        self.snapshots.append(self._snapshot())
-
-    def _assign_paths(self) -> None:
-        """Spread drones over the k cheapest paths.
-
-        Greedy: each drone takes the path where it is expected to arrive
-        first, i.e. path.total_cost + (drones already on it // throughput),
-        throughput being the narrowest capacity along the path.
-        """
-        paths = k_shortest_paths(
-            self.graph, self.graph.start, self.graph.end, MAX_PATHS
+        self._zone_slots: dict[tuple[str, int], int] = defaultdict(int)
+        self._link_slots: dict[tuple[frozenset[str], int], int] = (
+            defaultdict(int)
         )
-        if not paths:
-            raise NoPathError(
-                f"No path from {self.graph.start!r} to {self.graph.end!r}"
-            )
+        self._last_reserved_turn = 0
+        # graph.get_connection scans the whole list; this is the hot path.
+        self._link_capacity = {
+            frozenset((c.zone_a, c.zone_b)): c.max_link_capacity
+            for c in graph.connections
+        }
 
-        throughputs = [self._throughput(path) for path in paths]
-        load = [0] * len(paths)
-
-        for drone in self.drones:
-            best_index = min(
-                range(len(paths)),
-                key=lambda i: paths[i].total_cost + load[i] // throughputs[i],
-            )
-            self.paths[drone.id] = paths[best_index]
-            self.progress[drone.id] = 0
-            self.turns_left[drone.id] = 0
-            load[best_index] += 1
-
-    def _throughput(self, path: Path) -> int:
-        """Drones per turn the path can let through (its bottleneck)."""
-        capacities: list[int] = []
-        for zone_a, zone_b in zip(path.zones, path.zones[1:]):
-            connection = self.graph.get_connection(zone_a, zone_b)
-            if connection is not None:
-                capacities.append(connection.max_link_capacity)
-            if zone_b != self.graph.end:
-                capacities.append(self.graph.zones[zone_b].max_drones)
-        return min(capacities, default=1)
-
-    def _capacity(self, zone_name: str) -> float:
-        """max_drones of the zone; unlimited for start/end."""
-        if zone_name in (self.graph.start, self.graph.end):
-            return float("inf")
-        return self.graph.zones[zone_name].max_drones
-
-    def run(self, max_turns: int = 10_000) -> list[list[str]]:
-        """Simulate until every drone has arrived; return the turn history.
+    def run(self, max_turns: int = 100_000) -> list[list[str]]:
+        """Schedule every drone and return the turn history.
 
         Raises:
-            DeadlockError: If a turn goes by with no drone able to move,
-                or if max_turns is reached.
+            DeadlockError: If a drone could not be delivered within
+                max_turns.
         """
-        while not self.is_finished():
-            if len(self.turns) >= max_turns:
-                raise DeadlockError("Turn limit reached")
-            moves = self.step()
-            # A drone in transit always lands, so an empty turn means that
-            # nobody can move any more.
-            if not moves:
-                raise DeadlockError(f"Stuck at turn {len(self.turns) + 1}")
-            self.turns.append(moves)
-            self.snapshots.append(self._snapshot())
+        if self.plans:
+            return self.turns
+        for drone in self.drones:
+            plan = self._best_plan()
+            if len(plan) - 1 > max_turns:
+                raise DeadlockError(
+                    f"D{drone.id} cannot be delivered in {max_turns} turns"
+                )
+            self._reserve(plan)
+            self.plans[drone.id] = plan
+            drone.current_zone = self.graph.end
+            drone.state = "arrived"
+        self._build_history()
         return self.turns
 
-    def step(self) -> list[str]:
-        """Play one turn and return the moves made (e.g. ["D1-hub", ...])."""
-        link_usage: dict[frozenset[str], int] = {}
-        moves: list[str] = []
+    def _best_plan(self) -> list[Position]:
+        """Earliest delivery over all candidate paths.
 
-        # Drones already on a connection are committed: they land first,
-        # and that landing is their move for this turn.
-        landed: set[int] = set()
-        for drone in self.drones:
-            if drone.state == "moving":
-                moves.append(self._finish_transit(drone, link_usage))
-                landed.add(drone.id)
-
-        pending = [
-            drone for drone in self._ordered_drones()
-            if drone.state != "arrived" and drone.id not in landed
-        ]
-        # Repeat until stable: a drone blocked in one pass may get a slot
-        # freed by a drone of another path later in the same pass.
-        moved = True
-        while moved:
-            moved = False
-            still_pending: list[Drone] = []
-            for drone in pending:
-                next_zone = self._next_zone(drone)
-                if self._can_move(drone, next_zone, link_usage):
-                    moves.append(self._move(drone, next_zone, link_usage))
-                    moved = True
-                else:
-                    still_pending.append(drone)
-            pending = still_pending
-
-        for drone in pending:
-            drone.state = "waiting"
-        return sorted(moves, key=self._move_drone_id)
-
-    def _ordered_drones(self) -> list[Drone]:
-        """Most advanced drones first so they free space for followers."""
-        return sorted(
-            self.drones, key=lambda d: (-self.progress[d.id], d.id)
-        )
-
-    def _next_zone(self, drone: Drone) -> str:
-        return self.paths[drone.id].zones[self.progress[drone.id] + 1]
-
-    def _can_move(
-        self,
-        drone: Drone,
-        next_zone: str,
-        link_usage: dict[frozenset[str], int],
-    ) -> bool:
-        """Zone capacity and link capacity both allow this hop this turn."""
-        connection = self.graph.get_connection(drone.current_zone, next_zone)
-        if connection is None:
-            return False
-        key = frozenset((drone.current_zone, next_zone))
-        if link_usage.get(key, 0) >= connection.max_link_capacity:
-            return False
-        occupancy = self.zone_occupancy.get(next_zone, 0)
-        return occupancy < self._capacity(next_zone)
-
-    def _move(
-        self,
-        drone: Drone,
-        next_zone: str,
-        link_usage: dict[frozenset[str], int],
-    ) -> str:
-        """Apply the hop: update occupancy/link usage, state, progress.
-
-        Restricted destination: the drone only leaves its zone this turn
-        (state "moving", destination slot reserved) and lands next turn.
-        Returns the move string: "D<id>-<zone>", or "D<id>-<from>-<to>"
-        for a drone that is now on the connection.
+        Ties go to the path with the most priority zones, then to the
+        cheapest one (candidate_paths is sorted by cost).
         """
-        origin = drone.current_zone
-        key = frozenset((origin, next_zone))
-        link_usage[key] = link_usage.get(key, 0) + 1
-        self.zone_occupancy[origin] -= 1
-        self.zone_occupancy[next_zone] = (
-            self.zone_occupancy.get(next_zone, 0) + 1
+        best_plan: list[Position] = []
+        best_key: tuple[int, int, int] | None = None
+        for index, path in enumerate(self.candidate_paths):
+            plan = self._schedule(path)
+            key = (len(plan), -self._priority_zones(path), index)
+            if best_key is None or key < best_key:
+                best_plan, best_key = plan, key
+        return best_plan
+
+    def _schedule(self, path: Path) -> list[Position]:
+        """Earliest schedule along path given the current reservations.
+
+        Breadth-first search over (index in path, turn) states: from each
+        state the drone can wait, or move to the next zone of the path.
+        States are expanded turn by turn, so the first time the end is
+        reached is the earliest possible delivery.
+        """
+        zones = path.zones
+        last = len(zones) - 1
+        # Past the last reservation everything is free: the drone can
+        # always walk the path then, 2 turns per hop at most.
+        horizon = self._last_reserved_turn + 2 * len(zones) + 2
+        layers: dict[int, set[int]] = defaultdict(set)
+        layers[0].add(0)
+        parents: dict[State, State] = {}
+
+        for turn in range(horizon + 1):
+            if last in layers[turn]:
+                return self._to_positions(zones, (last, turn), parents)
+            for index in sorted(layers[turn], reverse=True):
+                for target in self._successors(zones, index, turn):
+                    if target[0] not in layers[target[1]]:
+                        layers[target[1]].add(target[0])
+                        parents[target] = (index, turn)
+        raise DeadlockError(f"No schedule found along {zones}")
+
+    def _successors(
+        self, zones: list[str], index: int, turn: int
+    ) -> list[State]:
+        """States reachable from being in zones[index] at end of turn."""
+        successors: list[State] = []
+        zone = zones[index]
+        if self._zone_has_room(zone, turn + 1):
+            successors.append((index, turn + 1))
+
+        if index + 1 < len(zones):
+            target = zones[index + 1]
+            link = frozenset((zone, target))
+            if self._link_has_room(link, turn + 1):
+                arrival = turn + (
+                    2 if self._is_restricted(target) else 1
+                )
+                if self._zone_has_room(target, arrival):
+                    successors.append((index + 1, arrival))
+        return successors
+
+    def _to_positions(
+        self, zones: list[str], goal: State, parents: dict[State, State]
+    ) -> list[Position]:
+        """Turn the search result into one Position per turn."""
+        states = [goal]
+        while states[-1] in parents:
+            states.append(parents[states[-1]])
+        states.reverse()
+
+        plan: list[Position] = [(zones[0], zones[0], 0.0)]
+        for (index, turn), (next_index, next_turn) in zip(
+            states, states[1:]
+        ):
+            if next_turn - turn == 2:
+                plan.append((zones[index], zones[next_index], 0.5))
+            zone = zones[next_index]
+            plan.append((zone, zone, 0.0))
+        return plan
+
+    def _reserve(self, plan: list[Position]) -> None:
+        """Book the zone and link slots used by plan."""
+        for turn in range(1, len(plan)):
+            before, after = plan[turn - 1], plan[turn]
+            zone, target, fraction = after
+            if fraction == 0.0 and not self._is_unlimited(zone):
+                self._zone_slots[(zone, turn)] += 1
+            # The link is used on the turn the drone leaves a zone; a
+            # restricted connection is freed on the arrival turn.
+            leaves_zone = before[2] == 0.0 and after != before
+            if leaves_zone:
+                self._link_slots[(frozenset((before[0], target)), turn)] += 1
+        self._last_reserved_turn = max(
+            self._last_reserved_turn, len(plan) - 1
         )
 
-        if self.graph.zones[next_zone].zone_type == "restricted":
-            drone.state = "moving"
-            self.turns_left[drone.id] = 1
-            return f"D{drone.id}-{origin}-{next_zone}"
+    def _is_unlimited(self, zone_name: str) -> bool:
+        return zone_name in (self.graph.start, self.graph.end)
 
-        self._land(drone, next_zone)
-        return f"D{drone.id}-{next_zone}"
+    def _is_restricted(self, zone_name: str) -> bool:
+        return self.graph.zones[zone_name].zone_type == "restricted"
 
-    def _finish_transit(
-        self, drone: Drone, link_usage: dict[frozenset[str], int]
+    def _zone_has_room(self, zone_name: str, turn: int) -> bool:
+        if self._is_unlimited(zone_name):
+            return True
+        used = self._zone_slots.get((zone_name, turn), 0)
+        return used < self.graph.zones[zone_name].max_drones
+
+    def _link_has_room(self, link: frozenset[str], turn: int) -> bool:
+        capacity = self._link_capacity.get(link, 0)
+        return self._link_slots.get((link, turn), 0) < capacity
+
+    def _priority_zones(self, path: Path) -> int:
+        return sum(
+            self.graph.zones[zone].zone_type == "priority"
+            for zone in path.zones
+        )
+
+    def _build_history(self) -> None:
+        """Fill turns (move strings) and snapshots from the plans."""
+        total_turns = max(len(plan) for plan in self.plans.values()) - 1
+        for turn in range(total_turns + 1):
+            self.snapshots.append({
+                drone_id: plan[min(turn, len(plan) - 1)]
+                for drone_id, plan in self.plans.items()
+            })
+        for turn in range(1, total_turns + 1):
+            moves: list[str] = []
+            for drone_id, plan in sorted(self.plans.items()):
+                if turn < len(plan) and plan[turn] != plan[turn - 1]:
+                    moves.append(self._move_string(drone_id, plan, turn))
+            self.turns.append(moves)
+
+    def _move_string(
+        self, drone_id: int, plan: list[Position], turn: int
     ) -> str:
-        """Second turn of a restricted move: the drone reaches its zone."""
-        next_zone = self._next_zone(drone)
-        key = frozenset((drone.current_zone, next_zone))
-        link_usage[key] = link_usage.get(key, 0) + 1
-        self.turns_left[drone.id] = 0
-        self._land(drone, next_zone)
-        return f"D{drone.id}-{next_zone}"
-
-    def _land(self, drone: Drone, zone_name: str) -> None:
-        """Put the drone in zone_name (its slot is already counted)."""
-        drone.current_zone = zone_name
-        self.progress[drone.id] += 1
-        drone.state = "arrived" if zone_name == self.graph.end else "idle"
-
-    def _snapshot(self) -> dict[int, Position]:
-        positions: dict[int, Position] = {}
-        for drone in self.drones:
-            if drone.state == "moving":
-                target = self._next_zone(drone)
-                positions[drone.id] = (drone.current_zone, target, 0.5)
-            else:
-                zone = drone.current_zone
-                positions[drone.id] = (zone, zone, 0.0)
-        return positions
-
-    @staticmethod
-    def _move_drone_id(move: str) -> int:
-        return int(move[1:move.index("-")])
-
-    def is_finished(self) -> bool:
-        return all(d.state == "arrived" for d in self.drones)
+        """ "D<id>-<zone>", or "D<id>-<connection>" while in flight."""
+        zone, target, fraction = plan[turn]
+        if fraction == 0.0:
+            return f"D{drone_id}-{zone}"
+        connection = self.graph.get_connection(zone, target)
+        name = connection.name if connection else f"{zone}-{target}"
+        return f"D{drone_id}-{name}"
 
     @staticmethod
     def format_turn(moves: list[str]) -> str:

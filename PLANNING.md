@@ -37,7 +37,7 @@
 ### Matin
 - [x] Animation graphique des drones (potato.png, interpolation entre tours, SPACE/←/→/↑/↓/R) + feedback visuel zones bloquées/priority/restricted, occupation n/max, épaisseur des liens selon capacité, échelle adaptée à l'écran
 ### Après-midi
-- [x] Refactor de `render.py` en modules séparés : `ui.py` (couleurs, `GameState`, `Button`), `menu.py` (`App` : boucle d'états + écrans menu/erreur), `render.py` (`Layout`, `SimulationView`) ; `main.py` racine supprimé
+- [ ] Refactor de `render.py` en modules séparés si le temps le permet (sinon reporté après la deadline)
 - [ ] `flake8` + `mypy --strict` clean sur tout le projet
 - [ ] Tests pytest sur les cas limites (zone bloquée, capacité dépassée, map malformée, aucun chemin)
 ### Fin de journée (buffer 17h–19h)

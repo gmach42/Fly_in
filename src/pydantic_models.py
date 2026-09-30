@@ -82,6 +82,11 @@ class Connection(BaseModel):
             raise ValueError("A connection cannot link a zone to itself")
         return self
 
+    @property
+    def name(self) -> str:
+        """The connection as written in the map file, e.g. "a-b"."""
+        return f"{self.zone_a}-{self.zone_b}"
+
     def links(self, zone_name: str) -> bool:
         return zone_name in (self.zone_a, self.zone_b)
 
