@@ -101,7 +101,6 @@ class Simulation:
                 drone.state = "waiting"
         return moves
 
-    # ── Rules ───────────────────────────────────────────────────────────
     def _ordered_drones(self) -> list[Drone]:
         """Most advanced drones first so they free space for followers."""
         return sorted(
