@@ -1,3 +1,8 @@
+"""Adaptation of the A* algorithm to find the cheapest path between two zones
+of a Graph.
+"""
+
+
 import heapq
 from math import dist
 

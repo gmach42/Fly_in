@@ -19,7 +19,8 @@ class ParseError(Exception):
 #             if not line or line.startswith('#'):
 #                 continue
 #             if ":" not in line:
-#                 raise ParseError(line_no, f"Expected 'key: value', got '{line}'")
+#                 raise ParseError(line_no,
+#                                  f"Expected 'key: value', got '{line}'")
 #             key, _, value = line.partition(":")
 #             key = key.strip()
 #             value = value.strip()
@@ -176,7 +177,7 @@ def _build_zone(
             metadata["max_drones"], line_no, "max_drones"
         )
     try:
-        return Zone(**kwargs)
+        return Zone.model_validate(kwargs)
     except ValidationError as exc:
         raise ParseError(line_no, str(exc)) from exc
 
@@ -191,7 +192,7 @@ def _build_connection(
             metadata["max_link_capacity"], line_no, "max_link_capacity"
         )
     try:
-        return Connection(**kwargs)
+        return Connection.model_validate(kwargs)
     except ValidationError as exc:
         raise ParseError(line_no, str(exc)) from exc
 
@@ -261,12 +262,14 @@ def parse_map_file(filepath: str) -> Graph:
         raise ParseError(0, "Missing 'end_hub' definition")
 
     try:
-        return Graph(
-            nb_drones=state["nb_drones"],
-            start=state["start"],
-            end=state["end"],
-            zones=zones,
-            connections=connections,
-        )
+        # model_validate: zones is given as a list, turned into a dict
+        # (rejecting duplicate names) by Graph.zones_from_list.
+        return Graph.model_validate({
+            "nb_drones": state["nb_drones"],
+            "start": state["start"],
+            "end": state["end"],
+            "zones": zones,
+            "connections": connections,
+        })
     except ValidationError as exc:
         raise ParseError(0, str(exc)) from exc

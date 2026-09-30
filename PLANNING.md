@@ -27,17 +27,17 @@
 
 ## Jeudi 10/09
 ### Matin
-- [ ] `simulation.py` : moteur tour par tour multi-drones, capacités zone (`max_drones`) et connexion (`max_link_capacity`)
+- [x] `simulation.py` : chaque drone, l'un après l'autre, prend l'horaire le plus tôt sur l'un des k chemins candidats, en évitant les places (zone, tour) / (lien, tour) déjà réservées ; restricted = 2 tours (lien utilisé au départ seulement, place vérifiée à l'arrivée)
 ### Après-midi
-- [ ] Gestion des deadlocks/collisions, ordre de priorité entre drones
-- [ ] `main.py` / `src/__main__.py` : point d'entrée unique (`make run`) qui enchaîne menu → parse → simulate → render
+- [x] Gestion des deadlocks/collisions, ordre de priorité entre drones — impossible par construction : on respecte les réservations des drones précédents, et un drone peut toujours attendre dans start
+- [x] `src/__main__.py` : point d'entrée unique (`make run`) → `render.run_gui()` ; `main.py` et `make render` supprimés
 ### Soir
-- [ ] Brancher la simulation dans `render.py` (remplacer `parse_map_file`/`Zone` locaux par le vrai `Graph` pydantic)
-- [ ] **Jalon :** simulation correcte en mode debug sur toutes les maps, capacités respectées
+- [x] Brancher la simulation dans `render.py` (remplacer `parse_map_file`/`Zone` locaux par le vrai `Graph` pydantic) — les tours sont affichés dans le terminal, une erreur de map est affichée et ramène au menu
+- [x] **Jalon :** simulation correcte sur toutes les maps, capacités respectées (vérifié par un rejoueur indépendant) — optimum du sujet atteint partout : 4/4/4, 8/10/6, 13/16/26, challenger 43
 
 ## Vendredi 11/09 — jour de deadline
 ### Matin
-- [ ] Animation graphique des drones + feedback visuel zones bloquées/priority/restricted
+- [x] Animation graphique des drones (potato.png, un tour par seconde) ; zones dans leur couleur de la map (pas de feedback spécifique blocked/priority/restricted)
 ### Après-midi
 - [ ] Refactor de `render.py` en modules séparés si le temps le permet (sinon reporté après la deadline)
 - [ ] `flake8` + `mypy --strict` clean sur tout le projet
