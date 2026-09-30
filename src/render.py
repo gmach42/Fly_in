@@ -1,13 +1,11 @@
 import math
 import os
-import sys
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 
 import pygame
 import pygame.freetype
-from pygame.sprite import Sprite
 
 from parser import ParseError, parse_map_file
 from pathfinding import NoPathError
@@ -34,7 +32,7 @@ MENU_SCREEN_SIZE = (800, 600)
 SCALE = 150
 MARGIN = 80
 HUB_RADIUS = 30
-HUD_HEIGHT = 110
+HUD_HEIGHT = 0
 MIN_WINDOW_SIZE = (820, 420)
 TURNS_PER_SECOND = 1.0
 
@@ -192,6 +190,13 @@ class GameState(Enum):
     QUIT = 4
 
 
+Color = tuple[int, int, int]
+
+# What clicking a UIElement returns: a screen to go to, or a chosen
+# difficulty / map name.
+Action = GameState | str
+
+
 def get_maps(difficulty: str) -> list[str]:
     """Return map names for the given difficulty, formatted for display."""
     folder = MAPS_DIR / difficulty
@@ -200,23 +205,25 @@ def get_maps(difficulty: str) -> list[str]:
     return sorted(p.stem.replace("_", " ") for p in folder.glob("*.txt"))
 
 
-def create_surface_with_text(text, font_size, text_rgb, bg_rgb):
+def create_surface_with_text(
+    text: str, font_size: float, text_rgb: Color, bg_rgb: Color
+) -> pygame.Surface:
     """Returns a surface with text written on it."""
-    font = pygame.freetype.SysFont("Courier", font_size, bold=True)
+    font = pygame.freetype.SysFont("Courier", int(font_size), bold=True)
     surface, _ = font.render(text=text, fgcolor=text_rgb, bgcolor=bg_rgb)
     return surface.convert_alpha()
 
 
-class UIElement(Sprite):
+class UIElement:
     """A clickable UI element that highlights on hover."""
 
     def __init__(self,
-                 center_position,
-                 text,
-                 font_size,
-                 bg_rgb,
-                 text_rgb,
-                 action=None):
+                 center_position: tuple[int, int],
+                 text: str,
+                 font_size: float,
+                 bg_rgb: Color,
+                 text_rgb: Color,
+                 action: Action | None = None) -> None:
         self.mouse_over = False
         self.action = action
 
@@ -236,29 +243,31 @@ class UIElement(Sprite):
             default_image.get_rect(center=center_position),
             highlighted_image.get_rect(center=center_position),
         ]
-        super().__init__()
 
     @property
-    def image(self):
+    def image(self) -> pygame.Surface:
         return self.images[1] if self.mouse_over else self.images[0]
 
     @property
-    def rect(self):
+    def rect(self) -> pygame.Rect:
         return self.rects[1] if self.mouse_over else self.rects[0]
 
-    def update(self, mouse_pos, mouse_up):
+    def update(
+        self, mouse_pos: tuple[int, int], mouse_up: bool
+    ) -> Action | None:
         if self.rect.collidepoint(mouse_pos):
             self.mouse_over = True
             if mouse_up:
                 return self.action
         else:
             self.mouse_over = False
+        return None
 
-    def draw(self, surface):
+    def draw(self, surface: pygame.Surface) -> None:
         surface.blit(self.image, self.rect)
 
 
-def title_screen(screen):
+def title_screen(screen: pygame.Surface) -> Action:
     """Difficulty selection. Returns difficulty string or GameState.QUIT."""
 
     cx = screen.get_width() // 2
@@ -306,7 +315,9 @@ def title_screen(screen):
         pygame.display.flip()
 
 
-def map_select_screen(screen, difficulty: str):
+def map_select_screen(
+    screen: pygame.Surface, difficulty: str
+) -> tuple[GameState, str | None]:
     """Map selection screen for a given difficulty.
     Returns (GameState.TITLE, None) or (GameState.SIMULATION, map_name)."""
     cx = screen.get_width() // 2
@@ -343,9 +354,9 @@ def map_select_screen(screen, difficulty: str):
         title.draw(screen)
         for btn in buttons:
             action = btn.update(pygame.mouse.get_pos(), mouse_up)
+            if isinstance(action, GameState):
+                return action, None
             if action is not None:
-                if action == GameState.TITLE:
-                    return GameState.TITLE, None
                 return GameState.SIMULATION, action
             btn.draw(screen)
 
@@ -427,7 +438,9 @@ def draw_legend(
         x += label_rect.width + 45
 
 
-def error_screen(screen, map_name: str, message: str):
+def error_screen(
+    screen: pygame.Surface, map_name: str, message: str
+) -> GameState:
     """Show why a map could not be simulated. Returns the next GameState."""
     screen = pygame.display.set_mode(MENU_SCREEN_SIZE)
     font = pygame.freetype.SysFont("Arial", 16, bold=True)
@@ -460,13 +473,13 @@ def error_screen(screen, map_name: str, message: str):
             screen.blit(surf, rect)
 
         action = return_btn.update(pygame.mouse.get_pos(), mouse_up)
-        if action is not None:
+        if isinstance(action, GameState):
             return action
         return_btn.draw(screen)
         pygame.display.flip()
 
 
-def simulation_screen(screen, map_name: str):
+def simulation_screen(screen: pygame.Surface, map_name: str) -> GameState:
     """Run the simulation for map_name and animate it turn by turn.
 
     Controls: SPACE play/pause, LEFT/RIGHT previous/next turn,
@@ -489,9 +502,9 @@ def simulation_screen(screen, map_name: str):
     screen = pygame.display.set_mode(layout.size)
     pygame.display.set_caption(f"Fly-in - {map_name}")
 
-    font = pygame.freetype.SysFont("Arial", 12, bold=True)
-    hud_font = pygame.freetype.SysFont("Arial", 14, bold=True)
-    drone_size = max(18, int(layout.hub_radius * 1.1))
+    font = pygame.freetype.SysFont("Courier", 12, bold=True)
+    # hud_font = pygame.freetype.SysFont("Courier", 14, bold=True)
+    drone_size = max(50, int(layout.hub_radius * 1.1))
     drone_image = load_drone_image(drone_size)
     frames = [
         drone_pixels(snapshot, graph, layout)
@@ -499,19 +512,19 @@ def simulation_screen(screen, map_name: str):
     ]
     last_turn = len(frames) - 1
 
-    return_btn = UIElement(
-        (width - 120, height - 22),
-        "Return to menu",
-        16,
-        WHITE,
-        LIGHT_BLUE,
-        action=GameState.TITLE,
-    )
+    # return_btn = UIElement(
+    #     (width - 120, height - 22),
+    #     "Return to menu",
+    #     16,
+    #     WHITE,
+    #     LIGHT_BLUE,
+    #     action=GameState.TITLE,
+    # )
 
     turn = 0        # last completed turn shown
     phase = 0.0     # progress of the animation towards turn + 1, in [0, 1)
-    paused = False
-    speed = 1.0
+    # paused = False
+    # speed = 1.0
     clock = pygame.time.Clock()
 
     while True:
@@ -526,25 +539,27 @@ def simulation_screen(screen, map_name: str):
                 continue
             if event.key == pygame.K_ESCAPE:
                 return GameState.TITLE
-            if event.key == pygame.K_SPACE:
-                if turn == last_turn:
-                    turn = 0
-                    paused = False
-                else:
-                    paused = not paused
-            elif event.key == pygame.K_RIGHT:
-                turn, phase, paused = min(turn + 1, last_turn), 0.0, True
-            elif event.key == pygame.K_LEFT:
-                turn, phase, paused = max(turn - 1, 0), 0.0, True
-            elif event.key == pygame.K_UP:
-                speed = min(speed * 2, 16.0)
-            elif event.key == pygame.K_DOWN:
-                speed = max(speed / 2, 0.25)
-            elif event.key == pygame.K_r:
-                turn, phase, paused = 0, 0.0, False
+            # if event.key == pygame.K_SPACE:
+            #     if turn == last_turn:
+            #         turn = 0
+            #         paused = False
+            #     else:
+            #         paused = not paused
+            # elif event.key == pygame.K_RIGHT:
+            #     turn, phase, paused = min(turn + 1, last_turn), 0.0, True
+            # elif event.key == pygame.K_LEFT:
+            #     turn, phase, paused = max(turn - 1, 0), 0.0, True
+            # elif event.key == pygame.K_UP:
+            #     speed = min(speed * 2, 16.0)
+            # elif event.key == pygame.K_DOWN:
+            #     speed = max(speed / 2, 0.25)
+            # elif event.key == pygame.K_r:
+            #     turn, phase, paused = 0, 0.0, False
 
-        if not paused and turn < last_turn:
-            phase += elapsed * speed * TURNS_PER_SECOND
+        # if not paused and turn < last_turn:
+        #     phase += elapsed * speed * TURNS_PER_SECOND
+        if turn < last_turn:
+            phase += elapsed * TURNS_PER_SECOND
             while phase >= 1.0 and turn < last_turn:
                 phase -= 1.0
                 turn += 1
@@ -583,47 +598,48 @@ def simulation_screen(screen, map_name: str):
                 id_rect.center = (int(center[0]), int(center[1]))
                 screen.blit(id_surf, id_rect)
 
-        hud_top = height - HUD_HEIGHT
-        pygame.draw.rect(screen, LIGHT_GRAY, (0, hud_top, width, HUD_HEIGHT))
-        status = f"Turn {turn}/{last_turn}   speed x{speed:g}"
-        if paused:
-            status += "   PAUSED"
-        elif turn == last_turn:
-            status += "   DONE"
-        shown_turn = turn + 1 if phase > 0 else turn
-        moves = (
-            f"Turn {shown_turn}: "
-            + simulation.format_turn(simulation.turns[shown_turn - 1])
-            if shown_turn > 0 else ""
-        )
-        hud_lines = [
-            status,
-            fit_text(hud_font, moves, width - 30),
-            "[SPACE] play/pause   [LEFT/RIGHT] step   "
-            "[UP/DOWN] speed   [R] restart   [ESC] menu",
-        ]
-        for i, line in enumerate(hud_lines):
-            surf, rect = hud_font.render(line, BLACK)
-            rect.topleft = (15, hud_top + 10 + i * 22)
-            screen.blit(surf, rect)
-        draw_legend(screen, font, (15, height - 16))
+        # hud_top = height - HUD_HEIGHT
+        # pygame.draw.rect(screen, LIGHT_GRAY, (0, hud_top, width, HUD_HEIGHT))
+        # status = f"Turn {turn}/{last_turn}   speed x{speed:g}"
+        # if paused:
+        #     status += "   PAUSED"
+        # elif turn == last_turn:
+        #     status += "   DONE"
+        # shown_turn = turn + 1 if phase > 0 else turn
+        # moves_text = (
+        #     f"Turn {shown_turn}: "
+        #     + simulation.format_turn(simulation.turns[shown_turn - 1])
+        #     if shown_turn > 0 else ""
+        # )
+        # hud_lines = [
+        #     status,
+        #     fit_text(hud_font, moves_text, width - 30),
+        #     "[SPACE] play/pause   [LEFT/RIGHT] step   "
+        #     "[UP/DOWN] speed   [R] restart   [ESC] menu",
+        # ]
+        # for i, line in enumerate(hud_lines):
+        #     surf, rect = hud_font.render(line, BLACK)
+        #     rect.topleft = (15, hud_top + 10 + i * 22)
+        #     screen.blit(surf, rect)
+        # # draw_legend(screen, font, (15, height - 16))
 
-        action = return_btn.update(pygame.mouse.get_pos(), mouse_up)
-        if action is not None:
-            return action
-        return_btn.draw(screen)
+        # action = return_btn.update(pygame.mouse.get_pos(), mouse_up)
+        # if isinstance(action, GameState):
+        #     return action
+        # return_btn.draw(screen)
 
         pygame.display.flip()
 
 
-def main():
+def run_gui() -> None:
+    """Open the menu window and run the screens until the user quits."""
     pygame.init()
     screen = pygame.display.set_mode(MENU_SCREEN_SIZE)
     pygame.display.set_caption("Fly-in")
 
     game_state = GameState.TITLE
-    selected_difficulty = None
-    selected_map = None
+    selected_difficulty = ""
+    selected_map = ""
 
     while True:
         if game_state == GameState.TITLE:
@@ -631,14 +647,16 @@ def main():
                 os.environ['SDL_VIDEO_CENTERED'] = '1'
                 screen = pygame.display.set_mode(MENU_SCREEN_SIZE)
             result = title_screen(screen)
-            if result == GameState.QUIT:
+            if isinstance(result, GameState):
                 break
             selected_difficulty = result
             game_state = GameState.MAP_SELECT
 
         elif game_state == GameState.MAP_SELECT:
-            game_state, selected_map = map_select_screen(
+            game_state, map_name = map_select_screen(
                 screen, selected_difficulty)
+            if map_name is not None:
+                selected_map = map_name
 
         elif game_state == GameState.SIMULATION:
             game_state = simulation_screen(screen, selected_map)
@@ -647,8 +665,3 @@ def main():
             break
 
     pygame.quit()
-    sys.exit()
-
-
-if __name__ == "__main__":
-    main()

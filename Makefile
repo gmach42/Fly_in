@@ -2,7 +2,7 @@ PYTHON := uv run python
 FLAKE8 := uv run flake8
 MYPY := uv run mypy
 PYTEST := uv run pytest
-LINT_PATHS := src tests
+LINT_PATHS := .
 
 install:
 	uv sync

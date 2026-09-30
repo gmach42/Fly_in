@@ -13,9 +13,9 @@ from pathlib import Path
 # (`from pydantic_models import ...`), so src/ itself must be importable.
 sys.path.insert(0, str(Path(__file__).parent))
 
-from parser import ParseError, parse_map_file  # noqa: E402
-from pathfinding import NoPathError  # noqa: E402
-from simulation import DeadlockError, Simulation  # noqa: E402
+from parser import ParseError, parse_map_file
+from pathfinding import NoPathError
+from simulation import DeadlockError, Simulation
 
 
 def run_in_terminal(map_file: str) -> int:
@@ -41,7 +41,7 @@ def main() -> None:
         sys.exit(run_in_terminal(sys.argv[1]))
 
     import render  # pygame is only needed for the graphical mode
-    render.main()
+    render.run_gui()
 
 
 if __name__ == "__main__":

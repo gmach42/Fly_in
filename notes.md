@@ -243,4 +243,15 @@ def simulation_screen(screen, map_name: str):
 
 #===__main__.py===
 
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent)) ??
+
+from parser import ParseError, parse_map_file
+from pathfinding import NoPathError
+from simulation import DeadlockError, Simulation
+
+def run_in_terminal(map_file: str) -> int:
+def main() -> None
 
