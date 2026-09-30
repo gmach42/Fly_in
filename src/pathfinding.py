@@ -1,13 +1,3 @@
-"""A* pathfinding over the Fly-in drone graph.
-
-The cost model comes from `Zone.move_cost`: normal/priority zones cost 1,
-restricted zones cost 2, blocked zones are impassable and never entered.
-The heuristic is the Euclidean distance to the goal, scaled down by the
-smallest (destination move_cost / distance) ratio found in the graph, so
-it never overestimates the true remaining cost (admissible heuristic)
-regardless of how a given map's coordinates relate to its connections.
-"""
-
 import heapq
 from math import dist
 
@@ -64,13 +54,6 @@ class PathFinder:
             raise ValueError(f"End zone is blocked: {self.end!r}")
 
     def _min_cost_per_distance(self) -> float:
-        """Smallest (destination move_cost / distance) ratio in the graph.
-
-        Used to scale the Euclidean heuristic so it stays admissible
-        (never overestimates the real cost) whatever the map's geometry.
-        Falls back to 0.0 (no heuristic, A* then behaves like Dijkstra)
-        when it cannot be computed, e.g. a graph with a single zone.
-        """
         ratios: list[float] = []
         for connection in self.graph.connections:
             zone_a = self.graph.zones[connection.zone_a]
@@ -151,28 +134,39 @@ class PathFinder:
 
 
 def k_shortest_paths(graph: Graph, start: str, end: str, k: int) -> list[Path]:
-    """Up to k distinct paths from start to end, cheapest first.
-
-    Not a guaranteed-optimal k-shortest-paths algorithm (that would be
-    Yen's algorithm): each iteration runs A* while excluding one
-    connection used by every path found so far, which is enough to
-    surface real alternative routes without the extra complexity.
-    Stops early if fewer than k distinct paths exist.
-    """
     paths: list[Path] = []
-    excluded_connections: set[frozenset[str]] = set()
+    seen_routes: set[tuple[str, ...]] = set()
+    tried: set[frozenset[frozenset[str]]] = set()
+    # (total_cost, tie-breaker, path, excluded connections)
+    candidates: list[
+        tuple[float, int, Path, frozenset[frozenset[str]]]
+    ] = []
+    counter = 0
 
-    for _ in range(k):
-        finder = PathFinder(graph, start, end, excluded_connections)
+    def push(excluded: frozenset[frozenset[str]]) -> None:
+        nonlocal counter
+        if excluded in tried:
+            return
+        tried.add(excluded)
+        finder = PathFinder(graph, start, end, set(excluded))
         try:
             path = finder.a_star()
         except NoPathError:
-            break
+            return
+        if tuple(path.zones) in seen_routes:
+            return
+        heapq.heappush(candidates, (path.total_cost, counter, path, excluded))
+        counter += 1
 
+    push(frozenset())
+    while candidates and len(paths) < k:
+        _, _, path, excluded = heapq.heappop(candidates)
+        route = tuple(path.zones)
+        if route in seen_routes:
+            continue
+        seen_routes.add(route)
         paths.append(path)
-        # Exclude one connection of this path to force a different route
-        # next time; the first hop is enough since it already diverges
-        # from start.
-        excluded_connections.add(frozenset((path.zones[0], path.zones[1])))
+        for zone_a, zone_b in zip(path.zones, path.zones[1:]):
+            push(excluded | {frozenset((zone_a, zone_b))})
 
     return paths
