@@ -1,15 +1,21 @@
+import math
+import os
 import sys
-from enum import Enum
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 
 import pygame
 import pygame.freetype
 from pygame.sprite import Sprite
 
-import os
+from parser import ParseError, parse_map_file
+from pathfinding import NoPathError
+from pydantic_models import Graph, Zone
+from simulation import DeadlockError, Position, Simulation
 
 MAPS_DIR = Path(__file__).parent.parent / "maps"
+DRONE_IMAGE = Path(__file__).parent.parent / "potato.png"
 DIFFICULTIES = ["easy", "medium", "hard", "challenger"]
 
 WHITE = (255, 255, 255)
@@ -18,72 +24,155 @@ RED = (255, 0, 0)
 GREEN = (0, 255, 0)
 BLACK = (0, 0, 0)
 LIGHT_BLUE = (106, 159, 181)
+LIGHT_GRAY = (230, 230, 230)
+DARK_GRAY = (70, 70, 70)
+RESTRICTED_OUTLINE = (190, 0, 0)
+PRIORITY_OUTLINE = (230, 170, 0)
 
 MENU_SCREEN_SIZE = (800, 600)
 
 SCALE = 150
 MARGIN = 80
 HUB_RADIUS = 30
+HUD_HEIGHT = 110
+MIN_WINDOW_SIZE = (820, 420)
+TURNS_PER_SECOND = 1.0
 
 
 @dataclass
-class Zone:
-    name: str
-    x: int
-    y: int
-    zone_type: str = "normal"
-    color: str = "gray"
-    max_drones: int = 1
+class Layout:
+    """How grid coordinates map to the simulation window.
+
+    Attributes:
+        size: Window size in pixels (graph area + HUD).
+        scale: Pixels per grid unit.
+        offset: Pixel position of the grid origin.
+        hub_radius: Radius of a zone circle, shrunk on large maps.
+    """
+
+    size: tuple[int, int]
+    scale: float
+    offset: tuple[float, float]
+    hub_radius: int
+
+    def to_px(self, zone: Zone) -> tuple[float, float]:
+        return grid_to_px(zone.x, zone.y, self.offset, self.scale)
 
 
-def compute_window_size(zones) -> tuple[int, int]:
+def available_screen_size() -> tuple[int, int]:
+    """Desktop size minus some room for the window decorations."""
+    try:
+        sizes = pygame.display.get_desktop_sizes()
+    except pygame.error:
+        sizes = []
+    width, height = sizes[0] if sizes else (1600, 900)
+    return width - 80, height - 120
+
+
+def compute_layout(zones: list[Zone]) -> Layout:
+    """Fit the whole map in the screen, centered, above the HUD.
+
+    Uses SCALE pixels per grid unit, or less if the map would not fit
+    (e.g. the 23 units wide challenger map).
+    """
+    min_x = min(z.x for z in zones)
     max_x = max(z.x for z in zones)
-    max_y = max(z.y for z in zones)
     min_y = min(z.y for z in zones)  # y can be negative
-    width = (max_x) * SCALE + 2 * MARGIN
-    height = (max_y - min_y + 1) * SCALE + 2 * MARGIN
-    return (width, height)
-
-
-def compute_offset(zones) -> tuple[int, int]:
     max_y = max(z.y for z in zones)
-    min_y = min(z.y for z in zones)
+    span_x, span_y = max_x - min_x, max_y - min_y
 
-    # Centre horizontal : 0 à gauche + marge
-    offset_x = MARGIN
+    max_w, max_h = available_screen_size()
+    scale = float(SCALE)
+    if span_x:
+        scale = min(scale, (max_w - 2 * MARGIN) / span_x)
+    if span_y:
+        scale = min(scale, (max_h - 2 * MARGIN - HUD_HEIGHT) / span_y)
 
-    # Centre vertical : y=0 au milieu de la fenêtre
-    screen_height = (max_y - min_y + 1) * SCALE + 2 * MARGIN
-    offset_y = screen_height // 2  # y=0 → centre de l'écran
+    width = max(int(span_x * scale) + 2 * MARGIN, MIN_WINDOW_SIZE[0])
+    height = max(
+        int(span_y * scale) + 2 * MARGIN + HUD_HEIGHT, MIN_WINDOW_SIZE[1]
+    )
+    graph_height = height - HUD_HEIGHT
 
-    return (offset_x, offset_y)
+    # Center the map; y grows upwards in the map files.
+    offset_x = (width - span_x * scale) / 2 - min_x * scale
+    offset_y = (graph_height - span_y * scale) / 2 + max_y * scale
+    hub_radius = int(max(12, min(HUB_RADIUS, scale * 0.22)))
+    return Layout((width, height), scale, (offset_x, offset_y), hub_radius)
 
 
-def grid_to_px(x, y, offset, scale) -> tuple[int, int]:
+def grid_to_px(
+    x: float, y: float, offset: tuple[float, float], scale: float
+) -> tuple[float, float]:
     return (offset[0] + x * scale, offset[1] - y * scale)
 
 
-def draw_connection(screen, zone_a, zone_b, offset):
-    """Draw a line between two zones."""
-    pos_a = grid_to_px(zone_a.x, zone_a.y, offset, SCALE)
-    pos_b = grid_to_px(zone_b.x, zone_b.y, offset, SCALE)
-    pygame.draw.line(screen, BLACK, pos_a, pos_b, 2)
+def draw_connection(
+    screen: pygame.Surface,
+    zone_a: Zone,
+    zone_b: Zone,
+    layout: Layout,
+    capacity: int,
+) -> None:
+    """Draw a line between two zones, thicker for higher capacities."""
+    width = min(2 * capacity, 8)
+    pygame.draw.line(
+        screen, BLACK, layout.to_px(zone_a), layout.to_px(zone_b), width
+    )
 
 
-def draw_hub(screen, zone, offset, font):
-    """Draw a zone circle with its name centered inside."""
-    pos = grid_to_px(zone.x, zone.y, offset, SCALE)
+def draw_hub(
+    screen: pygame.Surface,
+    zone: Zone,
+    layout: Layout,
+    font: pygame.freetype.Font,
+    occupancy: int,
+    unlimited: bool,
+) -> None:
+    """Draw a zone circle, its type feedback, name and occupancy.
+
+    restricted: thick red ring, priority: thick gold ring,
+    blocked: dark disc crossed out.
+    """
+    pos = layout.to_px(zone)
+    radius = layout.hub_radius
     try:
-        color = pygame.Color(zone.color)
+        color = pygame.Color(zone.color or "gray")
     except ValueError:
         color = pygame.Color("gray")
-    pygame.draw.circle(screen, color, pos, HUB_RADIUS)
-    # pygame.draw.circle(screen, BLACK, pos, HUB_RADIUS, 2)  # outline
+    if zone.is_blocked:
+        color = pygame.Color(DARK_GRAY)
+    pygame.draw.circle(screen, color, pos, radius)
+
+    if zone.zone_type == "restricted":
+        pygame.draw.circle(screen, RESTRICTED_OUTLINE, pos, radius + 3, 5)
+    elif zone.zone_type == "priority":
+        pygame.draw.circle(screen, PRIORITY_OUTLINE, pos, radius + 3, 5)
+    else:
+        pygame.draw.circle(screen, BLACK, pos, radius, 1)
+
+    if zone.is_blocked:
+        d = radius * 0.6
+        pygame.draw.line(
+            screen, RED, (pos[0] - d, pos[1] - d), (pos[0] + d, pos[1] + d), 4
+        )
+        pygame.draw.line(
+            screen, RED, (pos[0] - d, pos[1] + d), (pos[0] + d, pos[1] - d), 4
+        )
+
     label_surf, label_rect = font.render(zone.name, BLACK)
-    # label_rect.center = pos # To center label if needed
-    label_rect.centerx = pos[0]
-    label_rect.top = pos[1] + HUB_RADIUS + 4
+    label_rect.centerx = int(pos[0])
+    label_rect.top = int(pos[1]) + radius + 5
     screen.blit(label_surf, label_rect)
+
+    if not zone.is_blocked:
+        count = str(occupancy)
+        if not unlimited:
+            count += f"/{zone.max_drones}"
+        count_surf, count_rect = font.render(count, BLACK)
+        count_rect.centerx = int(pos[0])
+        count_rect.bottom = int(pos[1]) - radius - 5
+        screen.blit(count_surf, count_rect)
 
 
 def find_map_path(map_name: str) -> Path:
@@ -94,47 +183,6 @@ def find_map_path(map_name: str) -> Path:
         if path.exists():
             return path
     raise FileNotFoundError(f"Map '{map_name}' not found.")
-
-
-def parse_metadata(meta_str: str) -> dict:
-    """Parse a '[key=value ...]' metadata string into a dict."""
-    return dict(
-        part.split("=", 1) for part in meta_str.strip("[] ").split()
-        if "=" in part)
-
-
-def parse_map_file(path: Path, ) -> tuple[list[Zone], list[tuple[str, str]]]:
-    """Parse a map file, return (zones, connections)."""
-    zones: list[Zone] = []
-    connections: list[tuple[str, str]] = []
-
-    with open(path) as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-
-            meta: dict = {}
-            if "[" in line:
-                meta = parse_metadata(line[line.index("["):])
-                line = line[:line.index("[")].strip()
-
-            parts = line.split()
-            if parts[0] in ("hub:", "start_hub:", "end_hub:"):
-                zones.append(
-                    Zone(
-                        name=parts[1],
-                        x=int(parts[2]),
-                        y=int(parts[3]),
-                        zone_type=meta.get("zone", "normal"),
-                        color=meta.get("color", "gray"),
-                        max_drones=int(meta.get("max_drones", 1)),
-                    ))
-            elif parts[0] == "connection:":
-                a, b = parts[1].split("-", 1)
-                connections.append((a, b))
-
-    return zones, connections
 
 
 class GameState(Enum):
@@ -305,27 +353,95 @@ def map_select_screen(screen, difficulty: str):
         pygame.display.flip()
 
 
-def simulation_screen(screen, map_name: str):
-    """Map display screen."""
-    path = find_map_path(map_name)
-    zones, connections = parse_map_file(path)
-    zone_by_name = {z.name: z for z in zones}
+def load_drone_image(size: int) -> pygame.Surface:
+    """The potato sprite scaled to size x size (a plain disc if missing)."""
+    try:
+        image = pygame.image.load(DRONE_IMAGE).convert_alpha()
+        return pygame.transform.smoothscale(image, (size, size))
+    except (pygame.error, FileNotFoundError):
+        fallback = pygame.Surface((size, size), pygame.SRCALPHA)
+        pygame.draw.circle(
+            fallback, (160, 110, 60), (size // 2, size // 2), size // 2
+        )
+        return fallback
 
-    w, h = compute_window_size(zones)
-    screen = pygame.display.set_mode((w, h))
-    pygame.display.set_caption(f"Fly-in - {map_name}")
 
-    offset = compute_offset(zones)
-    font = pygame.freetype.SysFont("Arial", 12, bold=True)
+def drone_pixels(
+    snapshot: dict[int, Position], graph: Graph, layout: Layout
+) -> dict[int, tuple[float, float]]:
+    """Pixel position of every drone for one turn snapshot.
 
+    Drones sharing a spot (same zone, or same point on a connection) are
+    spread on a small ring around it so they stay visible.
+    """
+    groups: dict[Position, list[int]] = {}
+    for drone_id, position in sorted(snapshot.items()):
+        groups.setdefault(position, []).append(drone_id)
+
+    pixels: dict[int, tuple[float, float]] = {}
+    for (zone_a, zone_b, fraction), drone_ids in groups.items():
+        ax, ay = layout.to_px(graph.zones[zone_a])
+        bx, by = layout.to_px(graph.zones[zone_b])
+        cx, cy = ax + (bx - ax) * fraction, ay + (by - ay) * fraction
+        ring = 0.0 if len(drone_ids) == 1 else layout.hub_radius * 0.6
+        for k, drone_id in enumerate(drone_ids):
+            angle = 2 * math.pi * k / len(drone_ids) - math.pi / 2
+            pixels[drone_id] = (
+                cx + ring * math.cos(angle), cy + ring * math.sin(angle)
+            )
+    return pixels
+
+
+def zone_occupancy(snapshot: dict[int, Position]) -> dict[str, int]:
+    """Drones sitting in each zone (drones on a connection not counted)."""
+    counts: dict[str, int] = {}
+    for zone_a, _, fraction in snapshot.values():
+        if fraction == 0.0:
+            counts[zone_a] = counts.get(zone_a, 0) + 1
+    return counts
+
+
+def fit_text(font: pygame.freetype.Font, text: str, max_width: int) -> str:
+    """Cut text with '...' so it fits in max_width pixels."""
+    if font.get_rect(text).width <= max_width:
+        return text
+    while text and font.get_rect(text + "...").width > max_width:
+        text = text[:-1]
+    return text + "..."
+
+
+def draw_legend(
+    screen: pygame.Surface, font: pygame.freetype.Font, pos: tuple[int, int]
+) -> None:
+    """Zone type legend, matching draw_hub's visual feedback."""
+    x, y = pos
+    entries = [
+        ("restricted (2 turns)", RESTRICTED_OUTLINE, False),
+        ("priority", PRIORITY_OUTLINE, False),
+        ("blocked", DARK_GRAY, True),
+    ]
+    for label, color, filled in entries:
+        pygame.draw.circle(screen, color, (x + 7, y), 7, 0 if filled else 3)
+        label_surf, label_rect = font.render(label, BLACK)
+        label_rect.midleft = (x + 20, y)
+        screen.blit(label_surf, label_rect)
+        x += label_rect.width + 45
+
+
+def error_screen(screen, map_name: str, message: str):
+    """Show why a map could not be simulated. Returns the next GameState."""
+    screen = pygame.display.set_mode(MENU_SCREEN_SIZE)
+    font = pygame.freetype.SysFont("Arial", 16, bold=True)
+    cx = screen.get_width() // 2
     return_btn = UIElement(
-        (140, h - 40),
+        (cx, screen.get_height() - 60),
         "Return to main menu",
         20,
-        WHITE,
         LIGHT_BLUE,
+        WHITE,
         action=GameState.TITLE,
     )
+    lines = [f"Cannot simulate '{map_name}':"] + message.splitlines()
 
     while True:
         mouse_up = False
@@ -337,15 +453,161 @@ def simulation_screen(screen, map_name: str):
             if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
                 mouse_up = True
 
+        screen.fill(LIGHT_BLUE)
+        for i, line in enumerate(lines[:20]):
+            text = fit_text(font, line, screen.get_width() - 60)
+            surf, rect = font.render(text, WHITE)
+            rect.topleft = (30, 40 + i * 24)
+            screen.blit(surf, rect)
+
+        action = return_btn.update(pygame.mouse.get_pos(), mouse_up)
+        if action is not None:
+            return action
+        return_btn.draw(screen)
+        pygame.display.flip()
+
+
+def simulation_screen(screen, map_name: str):
+    """Run the simulation for map_name and animate it turn by turn.
+
+    Controls: SPACE play/pause, LEFT/RIGHT previous/next turn,
+    UP/DOWN speed, R restart, ESC back to the menu.
+    """
+    try:
+        graph = parse_map_file(str(find_map_path(map_name)))
+        simulation = Simulation(graph)
+        simulation.run()
+    except (OSError, ParseError, NoPathError, DeadlockError,
+            ValueError) as exc:
+        return error_screen(screen, map_name, str(exc))
+
+    for moves in simulation.turns:
+        print(simulation.format_turn(moves))
+
+    layout = compute_layout(list(graph.zones.values()))
+    width, height = layout.size
+    os.environ["SDL_VIDEO_CENTERED"] = "1"
+    screen = pygame.display.set_mode(layout.size)
+    pygame.display.set_caption(f"Fly-in - {map_name}")
+
+    font = pygame.freetype.SysFont("Arial", 12, bold=True)
+    hud_font = pygame.freetype.SysFont("Arial", 14, bold=True)
+    drone_size = max(18, int(layout.hub_radius * 1.1))
+    drone_image = load_drone_image(drone_size)
+    frames = [
+        drone_pixels(snapshot, graph, layout)
+        for snapshot in simulation.snapshots
+    ]
+    last_turn = len(frames) - 1
+
+    return_btn = UIElement(
+        (width - 120, height - 22),
+        "Return to menu",
+        16,
+        WHITE,
+        LIGHT_BLUE,
+        action=GameState.TITLE,
+    )
+
+    turn = 0        # last completed turn shown
+    phase = 0.0     # progress of the animation towards turn + 1, in [0, 1)
+    paused = False
+    speed = 1.0
+    clock = pygame.time.Clock()
+
+    while True:
+        elapsed = clock.tick(60) / 1000
+        mouse_up = False
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                return GameState.QUIT
+            if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+                mouse_up = True
+            if event.type != pygame.KEYDOWN:
+                continue
+            if event.key == pygame.K_ESCAPE:
+                return GameState.TITLE
+            if event.key == pygame.K_SPACE:
+                if turn == last_turn:
+                    turn = 0
+                    paused = False
+                else:
+                    paused = not paused
+            elif event.key == pygame.K_RIGHT:
+                turn, phase, paused = min(turn + 1, last_turn), 0.0, True
+            elif event.key == pygame.K_LEFT:
+                turn, phase, paused = max(turn - 1, 0), 0.0, True
+            elif event.key == pygame.K_UP:
+                speed = min(speed * 2, 16.0)
+            elif event.key == pygame.K_DOWN:
+                speed = max(speed / 2, 0.25)
+            elif event.key == pygame.K_r:
+                turn, phase, paused = 0, 0.0, False
+
+        if not paused and turn < last_turn:
+            phase += elapsed * speed * TURNS_PER_SECOND
+            while phase >= 1.0 and turn < last_turn:
+                phase -= 1.0
+                turn += 1
+            if turn == last_turn:
+                phase = 0.0
+
         screen.fill(WHITE)
 
-        for a, b in connections:
-            if a in zone_by_name and b in zone_by_name:
-                draw_connection(screen, zone_by_name[a], zone_by_name[b],
-                                offset)
+        for connection in graph.connections:
+            draw_connection(
+                screen,
+                graph.zones[connection.zone_a],
+                graph.zones[connection.zone_b],
+                layout,
+                connection.max_link_capacity,
+            )
 
-        for zone in zones:
-            draw_hub(screen, zone, offset, font)
+        occupancy = zone_occupancy(simulation.snapshots[turn])
+        for zone in graph.zones.values():
+            draw_hub(
+                screen, zone, layout, font,
+                occupancy.get(zone.name, 0),
+                zone.name in (graph.start, graph.end),
+            )
+
+        # Smoothstep easing between the two snapshots.
+        t = phase * phase * (3 - 2 * phase)
+        current = frames[turn]
+        target = frames[turn + 1] if turn < last_turn else current
+        for drone_id, (x0, y0) in current.items():
+            x1, y1 = target[drone_id]
+            center = (x0 + (x1 - x0) * t, y0 + (y1 - y0) * t)
+            screen.blit(drone_image, drone_image.get_rect(center=center))
+            if drone_size >= 18:
+                id_surf, id_rect = font.render(str(drone_id), BLACK)
+                id_rect.center = (int(center[0]), int(center[1]))
+                screen.blit(id_surf, id_rect)
+
+        hud_top = height - HUD_HEIGHT
+        pygame.draw.rect(screen, LIGHT_GRAY, (0, hud_top, width, HUD_HEIGHT))
+        status = f"Turn {turn}/{last_turn}   speed x{speed:g}"
+        if paused:
+            status += "   PAUSED"
+        elif turn == last_turn:
+            status += "   DONE"
+        shown_turn = turn + 1 if phase > 0 else turn
+        moves = (
+            f"Turn {shown_turn}: "
+            + simulation.format_turn(simulation.turns[shown_turn - 1])
+            if shown_turn > 0 else ""
+        )
+        hud_lines = [
+            status,
+            fit_text(hud_font, moves, width - 30),
+            "[SPACE] play/pause   [LEFT/RIGHT] step   "
+            "[UP/DOWN] speed   [R] restart   [ESC] menu",
+        ]
+        for i, line in enumerate(hud_lines):
+            surf, rect = hud_font.render(line, BLACK)
+            rect.topleft = (15, hud_top + 10 + i * 22)
+            screen.blit(surf, rect)
+        draw_legend(screen, font, (15, height - 16))
 
         action = return_btn.update(pygame.mouse.get_pos(), mouse_up)
         if action is not None:
