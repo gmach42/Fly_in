@@ -10,9 +10,6 @@ install:
 run:
 	$(PYTHON) -m src
 
-render:
-	$(PYTHON) src/render.py
-
 debug:
 	$(PYTHON) -m pdb src/__main__.py
 
@@ -36,4 +33,4 @@ lint-strict:
 	$(FLAKE8) $(LINT_PATHS)
 	$(MYPY) $(LINT_PATHS) --strict
 
-.PHONY: install run render debug test test-verbose clean lint lint-strict help
+.PHONY: install run debug test test-verbose clean lint lint-strict help

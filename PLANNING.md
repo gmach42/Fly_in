@@ -27,19 +27,17 @@
 
 ## Jeudi 10/09
 ### Matin
-- [x] `simulation.py` : moteur tour par tour multi-drones, capacités zone (`max_drones`) et connexion (`max_link_capacity`), zone restricted = 2 tours (connexion occupée 2 tours, place réservée à l'arrivée), répartition des drones sur les k chemins selon coût + charge / débit du goulot
-### Après-midi
-- [x] Gestion des deadlocks/collisions, ordre de priorité entre drones — drones les plus avancés d'abord, tour résolu en passes jusqu'à stabilité (une place libérée sert dans le même tour), `DeadlockError` si un tour passe sans aucun mouvement (détection, pas de résolution)
+- [x] `simulation.py` : planification priorisée avec table de réservations (zone, tour) / (lien, tour) — chaque drone, l'un après l'autre, prend l'horaire le plus tôt sur l'un des k chemins candidats (BFS sur (index dans le chemin, tour)), à égalité le chemin avec le plus de zones priority. Sémantique du sujet : restricted = 2 tours, lien libéré au tour d'arrivée, place vérifiée à l'arrivée, place libérée utilisable dans le même tour
+- [x] Gestion des deadlocks/collisions, ordre de priorité entre drones — impossible par construction : chaque horaire respecte les réservations des drones précédents, et un drone peut toujours attendre dans start (capacité illimitée)
 - [x] `src/__main__.py` : point d'entrée (`make run`) menu → parse → simulate → render ; `python -m src <map>` = mode terminal (une ligne par tour). `main.py` à la racine reste le template uv, à supprimer ?
-### Soir
 - [x] Brancher la simulation dans `render.py` (remplacer `parse_map_file`/`Zone` locaux par le vrai `Graph` pydantic)
-- [x] **Jalon :** simulation correcte sur toutes les maps, capacités respectées — vérifié par un rejoueur indépendant (capacités zone/lien à chaque tour, connexions existantes, 2 tours en restricted). Tours : easy 4/4/4, medium 8/15/7, hard 13/16/27, challenger 47 (référence : 45)
+- [x] **Jalon :** simulation correcte sur toutes les maps, capacités respectées — vérifié par un rejoueur indépendant suivant les règles du sujet. **Optimum atteint sur les 10 maps** (4/4/4, 8/10/6, 13/16/26, challenger 43 = bonus). 1000 drones sur le challenger : 1018 tours (optimal), ~8 s
 
 ## Vendredi 11/09 — jour de deadline
 ### Matin
 - [x] Animation graphique des drones (potato.png, interpolation entre tours, SPACE/←/→/↑/↓/R) + feedback visuel zones bloquées/priority/restricted, occupation n/max, épaisseur des liens selon capacité, échelle adaptée à l'écran
 ### Après-midi
-- [ ] Refactor de `render.py` en modules séparés si le temps le permet (sinon reporté après la deadline)
+- [x] Refactor de `render.py` en modules séparés : `ui.py` (couleurs, `GameState`, `Button`), `menu.py` (`App` : boucle d'états + écrans menu/erreur), `render.py` (`Layout`, `SimulationView`) ; `main.py` racine supprimé
 - [ ] `flake8` + `mypy --strict` clean sur tout le projet
 - [ ] Tests pytest sur les cas limites (zone bloquée, capacité dépassée, map malformée, aucun chemin)
 ### Fin de journée (buffer 17h–19h)

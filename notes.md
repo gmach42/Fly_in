@@ -168,3 +168,79 @@ def _priority_zones(self,path: Path) -> int
 def _build_history(self) -> None
 def _move_string(self, drone_id: int, plan: list[Position], turn: int) -> str
 def format_turn(moves: list[str]) -> str:
+
+
+#===render.py===
+
+import math
+import os
+import sys
+from dataclasses import dataclass
+from enum import Enum
+from pathlib import Path
+
+import pygame
+import pygame.freetype
+from pygame.sprite import Sprite
+
+from parser import ParseError, parse_map_file
+from pathfinging import NoPathError
+from pydantyc_models import Graph, Zone
+from simulation import DeadlockError, Position, Simulation
+
+MAPS_DIR
+DRONE_IMAGE
+DIFFICULTIES
+
+colors: WHITE, BLUE, RED, GREEN, BLACK...
+
+constants: MENU_SCREEN_SIZE, SCALE, MARGIN, HUB_RADIUS, HUD_HEIGHT, MIN_WINDOW_SIZE, TURN_PER_SECOND
+
+@dataclass class Layout:
+	size: tuple[int, int]
+	scale: float
+	offset: tuple[float, float]
+	hub_radius: int
+
+	def to_px(self, zone: Zone) -> tuple[float, float]:
+
+def available_screen_size() -> tuple[int, int]:
+def compute_layout(zones: list[Zone]) -> Layout:
+def grid_to_px(x: float, y: float, offset: tuple[float, float], scale: float) -> tuple[float, float]:
+def draw_connection(screen: pygame.Surface, zone_a: Zone, zone_b: Zone, layout: Layout, capacity: int) -> None:
+def draw_hub(screen: pygame.Surgace, zone: Zone, layout: Layout, font: pygame.freetype.Font, occupancy: int, unlimited: bool) -> None:
+find_map_path(map_name: str) -> Path:
+
+class GameState(Enum): (TITLE, MAP_SELECT, SIMULATION, QUIT)
+
+def get_maps(difficulty: str) -> list[str]:
+def create_surface_with_text(text, font_size, text_rgb, bg_rgb)
+
+class UIElement(Sprite):
+	def __init__(self, center_position, text, font_size, bg_rgb, text_rgb, action=None):
+		self.mouse_over
+		self.action
+		default_image
+		self.images
+		self.rects
+		super().__init__()
+
+	@property def image(self):
+	@property def rect(self):
+	def update(self, mouse_pos, mouse up):
+	def draw(self, surface):
+
+def title_screen(screen):
+def map_select_screen(screen, diffictulty: str):
+def load_drone_iamge(size: int) -> pygame.Surface:
+def drone_pixels(snapshot: dict[int, Position], graph: Graph, layout: Layout) -> dict[int, tuple[float, float]]:
+def zone_occupancy(snapshot: dict[int, Position]) -> dict[str, int]:
+def fit_text(font: pygame.freetype.Font, text: str, max_width: int) -> str:
+def draw_legend(screen: pygame.Surface, font: pygame.freetype.Font, pos: tuple[int, int]) -> None:
+def error_screen(screen, map_name: str, message: str):
+def simulation_screen(screen, map_name: str):
+
+
+#===__main__.py===
+
+
