@@ -1,6 +1,4 @@
-"""Adaptation of the A* algorithm to find the cheapest path between two zones
-of a Graph.
-"""
+"""A* search for the cheapest path between two zones of a Graph."""
 
 
 import heapq
@@ -14,13 +12,7 @@ class NoPathError(Exception):
 
 
 class PathFinder:
-    """Finds the cheapest route between two zones of a Graph using A*.
-
-    Attributes:
-        graph: The map to search.
-        start: Name of the starting zone.
-        end: Name of the destination zone.
-    """
+    """Finds the cheapest route between two zones of a Graph using A*."""
 
     def __init__(
         self,
@@ -29,19 +21,7 @@ class PathFinder:
         end: str,
         excluded_connections: set[frozenset[str]] | None = None,
     ) -> None:
-        """Initialize the PathFinder and validate start/end.
-
-        Args:
-            graph: The map to search.
-            start: Name of the starting zone.
-            end: Name of the destination zone.
-            excluded_connections: Connections to treat as unusable, as
-                `{zone_a, zone_b}` pairs. Used by `k_shortest_paths` to
-                force alternative routes.
-
-        Raises:
-            ValueError: If start or end are unknown or blocked zones.
-        """
+        """Store the search parameters and validate start/end zones."""
         self.graph = graph
         self.start = start
         self.end = end
@@ -91,17 +71,7 @@ class PathFinder:
         return path
 
     def a_star(self) -> Path:
-        """Run A* and return the cheapest Path from start to end.
-
-        f(n) = g(n) + h(n), with g(n) the real cost accumulated so far
-        and h(n) the heuristic estimate to the goal. The open set is a
-        binary heap (heapq) keyed on (f_score, g_score, zone), so the
-        best-looking cell is always popped in O(log n) instead of
-        sorting the whole list at every iteration.
-
-        Raises:
-            NoPathError: If end is unreachable from start.
-        """
+        """Run A* and return the cheapest Path from start to end."""
         came_from: dict[str, str] = {}
         path_cost: dict[str, float] = {self.start: 0.0}
         visited: set[str] = set()

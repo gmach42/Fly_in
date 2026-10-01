@@ -240,8 +240,7 @@ def title_screen(screen: pygame.Surface) -> Action:
 def map_select_screen(
     screen: pygame.Surface, difficulty: str
 ) -> tuple[GameState, str | None]:
-    """Map selection screen for a given difficulty.
-    Returns (GameState.TITLE, None) or (GameState.SIMULATION, map_name)."""
+    """Map selection screen; return the next state and chosen map."""
     cx = screen.get_width() // 2
     maps = get_maps(difficulty)
 
@@ -289,8 +288,7 @@ def step_to_px(
     step: Step, graph_zones: dict[str, Zone],
     offset: tuple[int, int], scale: int,
 ) -> tuple[float, float]:
-    """Pixel position of a drone: its zone, or the middle of the
-    connection when it is flying towards a restricted zone."""
+    """Pixel position of a drone, mid-connection when in flight."""
     zone_a, zone_b = graph_zones[step[0]], graph_zones[step[1]]
     return grid_to_px((zone_a.x + zone_b.x) / 2, (zone_a.y + zone_b.y) / 2,
                       offset, scale)

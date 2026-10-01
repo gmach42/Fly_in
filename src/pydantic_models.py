@@ -13,16 +13,7 @@ ZONE_MOVE_COST: dict[ZoneType, float] = {
 
 
 class Zone(BaseModel):
-    """A zone (hub) in the map.
-
-    Attributes:
-        name: The unique name of the zone.
-        x: The x-coordinate of the zone.
-        y: The y-coordinate of the zone.
-        zone_type: The kind of zone, which drives its movement cost.
-        color: Optional display color.
-        max_drones: The maximum number of drones allowed in the zone at once.
-    """
+    """A zone (hub) in the map."""
 
     name: str
     x: int
@@ -56,14 +47,7 @@ class Zone(BaseModel):
 
 
 class Connection(BaseModel):
-    """A bidirectional link between two zones.
-
-    Attributes:
-        zone_a: Name of the first zone.
-        zone_b: Name of the second zone.
-        max_link_capacity: Maximum number of drones allowed on the link
-            at once.
-    """
+    """A bidirectional link between two zones."""
 
     zone_a: str
     zone_b: str
@@ -94,13 +78,7 @@ class Connection(BaseModel):
 
 
 class Drone(BaseModel):
-    """A drone travelling through the graph.
-
-    Attributes:
-        id: Unique identifier for the drone.
-        current_zone: Name of the zone where the drone currently is.
-        state: Current state of the drone.
-    """
+    """A drone travelling through the graph."""
 
     id: int
     current_zone: str
@@ -108,15 +86,7 @@ class Drone(BaseModel):
 
 
 class Graph(BaseModel):
-    """The full map: zones, connections and the start/end hubs.
-
-    Attributes:
-        nb_drones: Number of drones to route through the map.
-        start: Name of the start hub.
-        end: Name of the end hub.
-        zones: All zones in the map, keyed by name (includes start/end).
-        connections: All connections in the map.
-    """
+    """The full map: zones, connections and the start/end hubs."""
 
     nb_drones: int
     start: str
@@ -196,12 +166,7 @@ class Graph(BaseModel):
 
 
 class Path(BaseModel):
-    """A route through the graph for a single drone.
-
-    Attributes:
-        zones: Ordered list of zone names from start to end (inclusive).
-        total_cost: Cumulative move cost of the path.
-    """
+    """A route through the graph for a single drone."""
 
     zones: list[str]
     total_cost: float

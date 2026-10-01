@@ -93,17 +93,7 @@ def _parse_connection(text: str, line_no: int) -> Connection:
 
 
 def parse_map_file(filepath: str) -> Graph:
-    """Parse a full map file and build the corresponding Graph.
-
-    Raises:
-        ParseError: On any malformed line, a duplicate 'nb_drones'
-            definition, more than one 'start_hub'/'end_hub', or a
-            missing 'nb_drones'/'start_hub'/'end_hub'.
-        ParseError: Wrapping a pydantic ValidationError if the resulting
-            Zone/Connection/Graph is inconsistent (duplicate zone name,
-            unknown start/end hub, connection to an unknown zone,
-            duplicate connection, non-positive capacity, ...).
-    """
+    """Parse a map file into a Graph; raise ParseError if it is invalid."""
     nb_drones: int | None = None
     start: str | None = None
     end: str | None = None

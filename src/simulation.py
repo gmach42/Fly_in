@@ -1,15 +1,4 @@
-"""Simulation of Fly-in.
-
-Drones are scheduled one after the other. Each drone tries the k cheapest
-paths and keeps the one that delivers it the earliest, avoiding the zone
-and link slots already reserved by the previous drones:
-
-- a zone holds at most max_drones drones at the end of a turn (start and
-  end hubs are unlimited);
-- a connection is used by at most max_link_capacity drones during a turn;
-- moving into a restricted zone takes 2 turns: the drone uses the link on
-  the first turn only, and a slot must be free in the zone on the second.
-"""
+"""Fly-in simulation: schedule drones without breaking capacities."""
 
 import heapq
 
@@ -24,14 +13,7 @@ Step = tuple[str, str]
 
 
 class Simulation:
-    """Schedules all drones from graph.start to graph.end.
-
-    Attributes:
-        graph: The map.
-        paths: Candidate paths, cheapest first.
-        plans: For each drone, its Step at the end of every turn, from
-            turn 0 (in the start hub) until it reaches the end hub.
-    """
+    """Schedules all drones from graph.start to graph.end."""
 
     def __init__(self, graph: Graph) -> None:
         self.graph = graph
@@ -52,11 +34,7 @@ class Simulation:
         return [self._turn_line(turn) for turn in range(1, self.last_turn + 1)]
 
     def _schedule(self, path: Path) -> list[Step]:
-        """Earliest way to follow path, waiting where needed.
-
-        Explores (turn, index in path) states by increasing turn: each turn
-        the drone either waits or moves to the next zone of the path.
-        """
+        """Earliest way to follow path, waiting where needed."""
         zones = path.zones
         # Past the last reservation everything is free, so a schedule is
         # always found before this turn.
