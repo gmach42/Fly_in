@@ -7,8 +7,6 @@ from .pydantic_models import Graph, Path
 
 MAX_PATHS = 10
 
-# Where a drone is at the end of a turn: (zone, zone) when it is in a zone,
-# (from_zone, to_zone) when it is flying towards a restricted zone.
 Step = tuple[str, str]
 
 
@@ -36,8 +34,6 @@ class Simulation:
     def schedule(self, path: Path) -> list[Step]:
         """Earliest way to follow path, waiting where needed."""
         zones = path.zones
-        # Past the last reservation everything is free, so a schedule is
-        # always found before this turn.
         horizon = self.last_turn + 2 * len(zones) + 2
         queue: list[tuple[int, int]] = [(0, 0)]
         parents: dict[tuple[int, int], tuple[int, int]] = {}

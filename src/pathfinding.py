@@ -74,7 +74,6 @@ class PathFinder:
         path_cost: dict[str, float] = {self.start: 0.0}
         visited: set[str] = set()
 
-        # (f_score, g_score, zone) ; g_score is a stable tie-breaker
         open_paths: list[tuple[float, float, str]] = [
             (self.heuristic(self.start), 0.0, self.start)
         ]

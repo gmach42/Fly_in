@@ -321,6 +321,11 @@ def simulation_screen(screen: pygame.Surface, map_name: str) -> GameState:
         pygame.image.load(DRONE_IMAGE).convert_alpha(),
         (drone_size, drone_size),
     )
+    drone_font = pygame.freetype.SysFont("Arial", max(8, drone_size // 2), bold=True)
+    drone_labels = [
+        drone_font.render(str(drone + 1), RED)[0]
+        for drone in range(graph.nb_drones)
+    ]
 
     return_btn = UIElement(
         (140, h - 40),
@@ -353,8 +358,6 @@ def simulation_screen(screen: pygame.Surface, map_name: str) -> GameState:
         for zone in zones:
             draw_hub(screen, zone, offset, scale, font)
 
-        # One turn per second: drones glide from their position at `turn`
-        # to their position at `turn + 1` (fraction = progress in between).
         elapsed = (pygame.time.get_ticks() - start_ticks) / 1000
         progress = min(elapsed * TURNS_PER_SECOND, len(lines))
         turn, fraction = int(progress), progress - int(progress)
@@ -363,13 +366,15 @@ def simulation_screen(screen: pygame.Surface, map_name: str) -> GameState:
                                 graph.zones, offset, scale)
             x1, y1 = step_to_px(simulation.position(drone, turn + 1),
                                 graph.zones, offset, scale)
-            # Small shift per drone so drones sharing a zone stay visible.
+
             x0 += (drone % 3 - 1) * drone_size / 3
             y0 += (drone // 3 % 3 - 1) * drone_size / 3
             x1 += (drone % 3 - 1) * drone_size / 3
             y1 += (drone // 3 % 3 - 1) * drone_size / 3
             center = (x0 + (x1 - x0) * fraction, y0 + (y1 - y0) * fraction)
             screen.blit(drone_image, drone_image.get_rect(center=center))
+            label = drone_labels[drone]
+            screen.blit(label, label.get_rect(center=center))
 
         action = return_btn.update(pygame.mouse.get_pos(), mouse_up)
         if isinstance(action, GameState):

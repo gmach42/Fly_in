@@ -150,8 +150,6 @@ def parse_map_file(filepath: str) -> Graph:
     if end is None:
         raise ParseError(None, "Missing 'end_hub' definition")
 
-    # zones is given as a list, turned into a dict (rejecting duplicate
-    # names) by Graph.zones_from_list.
     return validate(
         Graph, {
             "nb_drones": nb_drones,
