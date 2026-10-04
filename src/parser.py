@@ -10,6 +10,8 @@ from .pydantic_models import Connection, Graph, Zone
 M = TypeVar("M", bound=BaseModel)
 
 MAX_FILE_SIZE = 1_000_000
+HUB_METADATA = ("zone", "color", "max_drones")
+CONNECTION_METADATA = ("max_link_capacity",)
 
 
 class ParseError(Exception):
@@ -43,7 +45,8 @@ class MapParser:
         return int(text)
 
     @staticmethod
-    def parse_metadata(text: str, line_no: int) -> dict[str, str]:
+    def parse_metadata(text: str, line_no: int,
+                       allowed: tuple[str, ...]) -> dict[str, str]:
         """Parse a trailing '[key=value key2=value2]' block, if present."""
         if not text:
             return {}
@@ -56,6 +59,10 @@ class MapParser:
             if not sep:
                 raise ParseError(line_no,
                                  f"Malformed metadata entry: {token!r}")
+            if key not in allowed:
+                raise ParseError(
+                    line_no, f"Unknown metadata key: {key!r} "
+                    f"(allowed: {', '.join(allowed)})")
             if key in metadata:
                 raise ParseError(line_no, f"Duplicate metadata key: {key!r}")
             metadata[key] = value
@@ -79,7 +86,7 @@ class MapParser:
                              f"Expected 'name x y [metadata]', got {text!r}")
         name, x, y = parts[:3]
         metadata = MapParser.parse_metadata(
-            parts[3] if len(parts) == 4 else "", line_no)
+            parts[3] if len(parts) == 4 else "", line_no, HUB_METADATA)
 
         data: dict[str, object] = {"name": name}
         try:
@@ -102,7 +109,8 @@ class MapParser:
         zone_a, sep, zone_b = hubs.partition("-")
         if not sep:
             raise ParseError(line_no, f"Expected 'hub1-hub2', got {hubs!r}")
-        metadata = MapParser.parse_metadata(rest[0] if rest else "", line_no)
+        metadata = MapParser.parse_metadata(rest[0] if rest else "", line_no,
+                                            CONNECTION_METADATA)
 
         data: dict[str, object] = {"zone_a": zone_a, "zone_b": zone_b}
         if "max_link_capacity" in metadata:
