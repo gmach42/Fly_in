@@ -1,5 +1,6 @@
 """Parser turning a map file into a Graph."""
 
+import os
 from typing import TypeVar
 
 from pydantic import BaseModel, ValidationError
@@ -7,6 +8,8 @@ from pydantic import BaseModel, ValidationError
 from .pydantic_models import Connection, Graph, Zone
 
 M = TypeVar("M", bound=BaseModel)
+
+MAX_FILE_SIZE = 1_000_000
 
 
 class ParseError(Exception):
@@ -116,6 +119,11 @@ class MapParser:
         zones: list[Zone] = []
         connections: list[Connection] = []
 
+        if not os.path.isfile(filepath):
+            raise ParseError(None, f"Not a regular file: {filepath!r}")
+        if os.path.getsize(filepath) > MAX_FILE_SIZE:
+            raise ParseError(
+                None, f"File is larger than {MAX_FILE_SIZE} bytes")
         with open(filepath) as f:
             for line_no, raw_line in enumerate(f, start=1):
                 line = raw_line.strip()
