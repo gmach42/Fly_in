@@ -56,7 +56,7 @@ def validate(model: type[M], data: dict[str, object],
     try:
         return model.model_validate(data)
     except ValidationError as exc:
-        raise ParseError(line_no, str(exc)) from exc
+        raise ParseError(line_no, format_errors(exc)) from exc
 
 
 def parse_hub(text: str, line_no: int) -> Zone:
