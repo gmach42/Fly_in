@@ -48,6 +48,11 @@ class Zone(BaseModel):
         return ZONE_MOVE_COST[self.zone_type]
 
     @property
+    def is_priority(self) -> bool:
+        """Whether paths through this zone are preferred on equal cost."""
+        return self.zone_type == "priority"
+
+    @property
     def is_blocked(self) -> bool:
         """Whether drones can never enter this zone."""
         return self.zone_type == "blocked"
@@ -196,6 +201,7 @@ class Path(BaseModel):
 
     zones: list[str]
     total_cost: float
+    priority_hubs: int = 0
 
     @property
     def length(self) -> int:

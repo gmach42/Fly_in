@@ -71,24 +71,25 @@ class PathFinder:
         return path
 
     def a_star(self) -> Path:
-        """Run A* and return the cheapest Path from start to end."""
+        """Run A*; on equal cost, prefer the path with most priority hubs."""
         came_from: dict[str, str] = {}
-        path_cost: dict[str, float] = {self.start: 0.0}
+        best: dict[str, tuple[float, int]] = {self.start: (0.0, 0)}
         visited: set[str] = set()
 
-        open_paths: list[tuple[float, float, str]] = [
-            (self.heuristic(self.start), 0.0, self.start)
+        open_paths: list[tuple[float, int, float, str]] = [
+            (round(self.heuristic(self.start), 9), 0, 0.0, self.start)
         ]
 
         while open_paths:
-            _, current_cost, current = heapq.heappop(open_paths)
+            _, neg_priority, current_cost, current = heapq.heappop(open_paths)
             if current in visited:
                 continue
             visited.add(current)
 
             if current == self.end:
                 zones = self.reconstruct_path(current, came_from)
-                return Path(zones=zones, total_cost=current_cost)
+                return Path(zones=zones, total_cost=current_cost,
+                            priority_hubs=-neg_priority)
 
             for neighbor in self.graph.get_neighbors(current):
                 neighbor_zone = self.graph.zones[neighbor]
@@ -98,23 +99,27 @@ class PathFinder:
                     continue
 
                 new_cost = current_cost + neighbor_zone.move_cost
-                if new_cost < path_cost.get(neighbor, float("inf")):
-                    path_cost[neighbor] = new_cost
+                new_priority = -neg_priority + neighbor_zone.is_priority
+                label = (new_cost, -new_priority)
+                old_cost, old_priority = best.get(neighbor, (float("inf"), 0))
+                if label < (old_cost, -old_priority):
+                    best[neighbor] = (new_cost, new_priority)
                     came_from[neighbor] = current
-                    priority = new_cost + self.heuristic(neighbor)
-                    heapq.heappush(open_paths, (priority, new_cost, neighbor))
+                    estimate = round(new_cost + self.heuristic(neighbor), 9)
+                    heapq.heappush(open_paths, (estimate, -new_priority,
+                                                new_cost, neighbor))
 
         raise NoPathError(f"No path from {self.start!r} to {self.end!r}")
 
     @staticmethod
     def k_shortest_paths(graph: Graph, start: str, end: str,
                          k: int) -> list[Path]:
-        """Return up to k distinct paths, cheapest first."""
+        """Return up to k distinct paths, cheapest then most priority."""
         paths: list[Path] = []
         seen_routes: set[tuple[str, ...]] = set()
         tried: set[frozenset[frozenset[str]]] = set()
 
-        candidates: list[tuple[float, int, Path,
+        candidates: list[tuple[float, int, int, Path,
                                frozenset[frozenset[str]]]] = []
         counter = 0
 
@@ -130,13 +135,13 @@ class PathFinder:
                 return
             if tuple(path.zones) in seen_routes:
                 return
-            heapq.heappush(candidates,
-                           (path.total_cost, counter, path, excluded))
+            heapq.heappush(candidates, (path.total_cost, -path.priority_hubs,
+                                        counter, path, excluded))
             counter += 1
 
         push(frozenset())
         while candidates and len(paths) < k:
-            _, _, path, excluded = heapq.heappop(candidates)
+            _, _, _, path, excluded = heapq.heappop(candidates)
             route = tuple(path.zones)
             if route in seen_routes:
                 continue
