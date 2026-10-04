@@ -31,6 +31,7 @@ MENU_SCREEN_SIZE = (800, 600)
 SCALE = 150
 MARGIN = 80
 HUB_RADIUS = 30
+DRONE_SIZE_RATIO = 2.5
 BOTTOM_MARGIN = 120
 MIN_WINDOW_WIDTH = 400
 SCREEN_RATIO = 0.9
@@ -393,7 +394,7 @@ class Gui:
         offset = MapDrawer.compute_offset(zones, scale, w)
         font = pygame.freetype.SysFont("Arial", 12, bold=True)
         stagger = MapDrawer.needs_stagger(zones, scale, font)
-        drone_size = MapDrawer.hub_radius(scale)
+        drone_size = int(MapDrawer.hub_radius(scale) * DRONE_SIZE_RATIO)
         drone_image = pygame.transform.smoothscale(
             pygame.image.load(DRONE_IMAGE).convert_alpha(),
             (drone_size, drone_size),
@@ -450,11 +451,6 @@ class Gui:
                 x1, y1 = MapDrawer.step_to_px(
                     simulation.position(drone, turn + 1), graph.zones, offset,
                     scale)
-
-                x0 += (drone % 3 - 1) * drone_size / 3
-                y0 += (drone // 3 % 3 - 1) * drone_size / 3
-                x1 += (drone % 3 - 1) * drone_size / 3
-                y1 += (drone // 3 % 3 - 1) * drone_size / 3
                 center = (x0 + (x1 - x0) * fraction, y0 + (y1 - y0) * fraction)
                 screen.blit(drone_image, drone_image.get_rect(center=center))
                 label = drone_labels[drone]
