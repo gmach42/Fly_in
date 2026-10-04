@@ -3,4 +3,4 @@
 from . import render
 
 if __name__ == "__main__":
-    render.run_gui()
+    render.Gui.run_gui()

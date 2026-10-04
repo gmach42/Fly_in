@@ -104,39 +104,42 @@ class PathFinder:
 
         raise NoPathError(f"No path from {self.start!r} to {self.end!r}")
 
+    @staticmethod
+    def k_shortest_paths(graph: Graph, start: str, end: str,
+                         k: int) -> list[Path]:
+        paths: list[Path] = []
+        seen_routes: set[tuple[str, ...]] = set()
+        tried: set[frozenset[frozenset[str]]] = set()
 
-def k_shortest_paths(graph: Graph, start: str, end: str, k: int) -> list[Path]:
-    paths: list[Path] = []
-    seen_routes: set[tuple[str, ...]] = set()
-    tried: set[frozenset[frozenset[str]]] = set()
+        candidates: list[
+            tuple[float, int, Path, frozenset[frozenset[str]]]] = []
+        counter = 0
 
-    candidates: list[tuple[float, int, Path, frozenset[frozenset[str]]]] = []
-    counter = 0
+        def push(excluded: frozenset[frozenset[str]]) -> None:
+            nonlocal counter
+            if excluded in tried:
+                return
+            tried.add(excluded)
+            finder = PathFinder(graph, start, end, set(excluded))
+            try:
+                path = finder.a_star()
+            except NoPathError:
+                return
+            if tuple(path.zones) in seen_routes:
+                return
+            heapq.heappush(candidates,
+                           (path.total_cost, counter, path, excluded))
+            counter += 1
 
-    def push(excluded: frozenset[frozenset[str]]) -> None:
-        nonlocal counter
-        if excluded in tried:
-            return
-        tried.add(excluded)
-        finder = PathFinder(graph, start, end, set(excluded))
-        try:
-            path = finder.a_star()
-        except NoPathError:
-            return
-        if tuple(path.zones) in seen_routes:
-            return
-        heapq.heappush(candidates, (path.total_cost, counter, path, excluded))
-        counter += 1
+        push(frozenset())
+        while candidates and len(paths) < k:
+            _, _, path, excluded = heapq.heappop(candidates)
+            route = tuple(path.zones)
+            if route in seen_routes:
+                continue
+            seen_routes.add(route)
+            paths.append(path)
+            for zone_a, zone_b in zip(path.zones, path.zones[1:]):
+                push(excluded | {frozenset((zone_a, zone_b))})
 
-    push(frozenset())
-    while candidates and len(paths) < k:
-        _, _, path, excluded = heapq.heappop(candidates)
-        route = tuple(path.zones)
-        if route in seen_routes:
-            continue
-        seen_routes.add(route)
-        paths.append(path)
-        for zone_a, zone_b in zip(path.zones, path.zones[1:]):
-            push(excluded | {frozenset((zone_a, zone_b))})
-
-    return paths
+        return paths
