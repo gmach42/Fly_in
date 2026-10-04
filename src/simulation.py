@@ -14,9 +14,10 @@ class Simulation:
     """Schedules all drones from graph.start to graph.end."""
 
     def __init__(self, graph: Graph) -> None:
+        """Find candidate paths and set up empty reservations."""
         self.graph = graph
-        self.paths = PathFinder.k_shortest_paths(
-            graph, graph.start, graph.end, MAX_PATHS)
+        self.paths = PathFinder.k_shortest_paths(graph, graph.start, graph.end,
+                                                 MAX_PATHS)
         if not self.paths:
             raise NoPathError(f"No path from {graph.start!r} to {graph.end!r}")
         self.plans: list[list[Step]] = []
@@ -49,8 +50,9 @@ class Simulation:
             if self.zone_free(here, turn + 1):
                 next_states.append((turn + 1, index))
             arrival = turn + (2 if self.restricted(target) else 1)
-            if all(self.link_free(here, target, t)
-                   for t in range(turn + 1, arrival + 1)):
+            if all(
+                    self.link_free(here, target, t)
+                    for t in range(turn + 1, arrival + 1)):
                 if self.zone_free(target, arrival):
                     next_states.append((arrival, index + 1))
             for state in next_states:
@@ -94,12 +96,14 @@ class Simulation:
         return zone not in (self.graph.start, self.graph.end)
 
     def zone_free(self, zone: str, turn: int) -> bool:
+        """Whether zone can take one more drone at turn."""
         if not self.is_limited(zone):
             return True
         used = self.zone_slots.get((zone, turn), 0)
         return used < self.graph.zones[zone].max_drones
 
     def link_free(self, zone_a: str, zone_b: str, turn: int) -> bool:
+        """Whether the link can take one more drone at turn."""
         connection = self.graph.get_connection(zone_a, zone_b)
         if connection is None:
             return False
@@ -107,10 +111,11 @@ class Simulation:
         return used < connection.max_link_capacity
 
     def restricted(self, zone: str) -> bool:
+        """Whether entering zone takes two turns."""
         return self.graph.zones[zone].zone_type == "restricted"
 
     def turn_line(self, turn: int) -> str:
-        """Write the moves of every drone during the given turn"""
+        """Write the moves of every drone during the given turn."""
         moves: list[str] = []
         for drone_id, plan in enumerate(self.plans, start=1):
             if turn < len(plan) and plan[turn] != plan[turn - 1]:

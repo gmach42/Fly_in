@@ -1,3 +1,5 @@
+"""Pydantic models describing a Fly-in map."""
+
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -47,6 +49,7 @@ class Zone(BaseModel):
 
     @property
     def is_blocked(self) -> bool:
+        """Whether drones can never enter this zone."""
         return self.zone_type == "blocked"
 
 
@@ -126,7 +129,7 @@ class Graph(BaseModel):
 
     @model_validator(mode="after")
     def check_consistency(self) -> "Graph":
-        """Ensure the graph is internally consistent:"""
+        """Ensure the graph is internally consistent."""
         if self.start not in self.zones:
             raise ValueError(f"Unknown start hub: {self.start!r}")
         if self.end not in self.zones:
@@ -181,7 +184,7 @@ class Graph(BaseModel):
         ]
 
     def get_connection(self, zone_a: str, zone_b: str) -> Connection | None:
-        """Return the connection object between two zones"""
+        """Return the connection between two zones, if any."""
         for connection in self.connections:
             if {connection.zone_a, connection.zone_b} == {zone_a, zone_b}:
                 return connection
@@ -196,4 +199,5 @@ class Path(BaseModel):
 
     @property
     def length(self) -> int:
+        """Number of zones in the path."""
         return len(self.zones)

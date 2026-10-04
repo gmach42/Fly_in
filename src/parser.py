@@ -1,3 +1,5 @@
+"""Parser turning a map file into a Graph."""
+
 from typing import TypeVar
 
 from pydantic import BaseModel, ValidationError
@@ -8,8 +10,10 @@ M = TypeVar("M", bound=BaseModel)
 
 
 class ParseError(Exception):
+    """Raised when a map file is invalid."""
 
     def __init__(self, line_no: int | None, msg: str) -> None:
+        """Prefix msg with the line number when there is one."""
         super().__init__(msg if line_no is None else f"Line {line_no}: {msg}")
 
 

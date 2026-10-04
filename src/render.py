@@ -1,3 +1,5 @@
+"""Pygame interface: menus and drone animation."""
+
 import sys
 from enum import Enum
 from pathlib import Path
@@ -45,6 +47,7 @@ class MapDrawer:
     @staticmethod
     def compute_window_size(zones: list[Zone],
                             scale: int) -> tuple[int, int]:
+        """Window size needed to show the whole map."""
         max_x = max(z.x for z in zones)
         max_y = max(z.y for z in zones)
         min_y = min(z.y for z in zones)  # y can be negative
@@ -54,6 +57,7 @@ class MapDrawer:
 
     @staticmethod
     def compute_offset(zones: list[Zone], scale: int) -> tuple[int, int]:
+        """Pixel position of the grid origin."""
         max_y = max(z.y for z in zones)
         min_y = min(z.y for z in zones)
 
@@ -68,6 +72,7 @@ class MapDrawer:
     def grid_to_px(
         x: float, y: float, offset: tuple[int, int], scale: int
     ) -> tuple[float, float]:
+        """Pixel position of a grid point."""
         return (offset[0] + x * scale, offset[1] - y * scale)
 
     @staticmethod
@@ -136,6 +141,8 @@ class MapFiles:
 
 
 class GameState(Enum):
+    """Screen the interface is currently showing."""
+
     TITLE = 1
     MAP_SELECT = 2
     SIMULATION = 3
@@ -154,7 +161,7 @@ class UIElement:
     def create_surface_with_text(
         text: str, font_size: float, text_rgb: Color, bg_rgb: Color
     ) -> pygame.Surface:
-        """Returns a surface with text written on it."""
+        """Return a surface with text written on it."""
         font = pygame.freetype.SysFont("Courier", int(font_size), bold=True)
         surface, _ = font.render(text=text, fgcolor=text_rgb, bgcolor=bg_rgb)
         return surface.convert_alpha()
@@ -166,6 +173,7 @@ class UIElement:
                  bg_rgb: Color,
                  text_rgb: Color,
                  action: Action | None = None) -> None:
+        """Render the normal and highlighted versions of the text."""
         self.mouse_over = False
         self.action = action
 
@@ -190,15 +198,18 @@ class UIElement:
 
     @property
     def image(self) -> pygame.Surface:
+        """Image to draw, bigger when hovered."""
         return self.images[1] if self.mouse_over else self.images[0]
 
     @property
     def rect(self) -> pygame.Rect:
+        """Rect of the current image."""
         return self.rects[1] if self.mouse_over else self.rects[0]
 
     def update(
         self, mouse_pos: tuple[int, int], mouse_up: bool
     ) -> Action | None:
+        """Update hover state; return the action when clicked."""
         if self.rect.collidepoint(mouse_pos):
             self.mouse_over = True
             if mouse_up:
@@ -208,6 +219,7 @@ class UIElement:
         return None
 
     def draw(self, surface: pygame.Surface) -> None:
+        """Draw the element on surface."""
         surface.blit(self.image, self.rect)
 
 
@@ -217,7 +229,6 @@ class Gui:
     @staticmethod
     def title_screen(screen: pygame.Surface) -> Action:
         """Difficulty selection; return a difficulty or GameState.QUIT."""
-
         cx = screen.get_width() // 2
 
         title = UIElement((cx, 100), "Fly-in", 50, LIGHT_BLUE, WHITE)

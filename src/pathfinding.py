@@ -29,6 +29,7 @@ class PathFinder:
         self.heuristic_scale = self.min_cost_per_distance()
 
     def validate(self) -> None:
+        """Ensure start and end exist and are not blocked."""
         for name in (self.start, self.end):
             if name not in self.graph.zones:
                 raise ValueError(f"Unknown zone: {name!r}")
@@ -38,6 +39,7 @@ class PathFinder:
             raise ValueError(f"End zone is blocked: {self.end!r}")
 
     def min_cost_per_distance(self) -> float:
+        """Smallest move cost per unit of distance, for the heuristic."""
         ratios: list[float] = []
         for connection in self.graph.connections:
             zone_a = self.graph.zones[connection.zone_a]
@@ -107,12 +109,13 @@ class PathFinder:
     @staticmethod
     def k_shortest_paths(graph: Graph, start: str, end: str,
                          k: int) -> list[Path]:
+        """Return up to k distinct paths, cheapest first."""
         paths: list[Path] = []
         seen_routes: set[tuple[str, ...]] = set()
         tried: set[frozenset[frozenset[str]]] = set()
 
-        candidates: list[
-            tuple[float, int, Path, frozenset[frozenset[str]]]] = []
+        candidates: list[tuple[float, int, Path,
+                               frozenset[frozenset[str]]]] = []
         counter = 0
 
         def push(excluded: frozenset[frozenset[str]]) -> None:
