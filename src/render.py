@@ -383,6 +383,7 @@ class Gui:
         except (OSError, ParseError, NoPathError, ValueError) as exc:
             print(f"Error: {exc}", file=sys.stderr)
             return GameState.QUIT
+
         print("\n".join(lines))
 
         zones = list(graph.zones.values())
@@ -400,7 +401,7 @@ class Gui:
             pygame.image.load(DRONE_IMAGE).convert_alpha(),
             (drone_size, drone_size),
         )
-        drone_font = pygame.freetype.SysFont("Impact",
+        drone_font = pygame.freetype.SysFont("Arial",
                                              max(8, drone_size // 2),
                                              bold=True)
         drone_labels = [

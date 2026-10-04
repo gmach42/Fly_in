@@ -7,6 +7,7 @@ from .pydantic_models import Graph, Path
 
 MAX_PATHS = 10
 
+# Step: Tuple of (zone_name, target_zone_name) for a drone at a given turn.
 Step = tuple[str, str]
 
 
