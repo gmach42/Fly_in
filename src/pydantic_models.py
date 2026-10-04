@@ -126,13 +126,23 @@ class Graph(BaseModel):
     def check_consistency(self) -> "Graph":
         """Ensure the graph is internally consistent:
 
-        start/end hubs exist, no duplicate connections,
+        start/end hubs exist, no two zones at the same position,
+        no duplicate connections,
         all connections reference known zones.
         """
         if self.start not in self.zones:
             raise ValueError(f"Unknown start hub: {self.start!r}")
         if self.end not in self.zones:
             raise ValueError(f"Unknown end hub: {self.end!r}")
+
+        positions: dict[tuple[int, int], str] = {}
+        for zone in self.zones.values():
+            other = positions.setdefault((zone.x, zone.y), zone.name)
+            if other != zone.name:
+                raise ValueError(
+                    f"Zones {other!r} and {zone.name!r} share position "
+                    f"({zone.x}, {zone.y})"
+                )
 
         seen_pairs: set[frozenset[str]] = set()
         for connection in self.connections:
