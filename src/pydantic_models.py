@@ -126,7 +126,7 @@ class Graph(BaseModel):
 
     @model_validator(mode="after")
     def check_consistency(self) -> "Graph":
-        """Ensure the graph is internally consistent:"""
+        """Ensure the graph is internally consistent."""
         if self.start not in self.zones:
             raise ValueError(f"Unknown start hub: {self.start!r}")
         if self.end not in self.zones:

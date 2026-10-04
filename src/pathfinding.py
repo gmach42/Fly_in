@@ -29,6 +29,7 @@ class PathFinder:
         self.heuristic_scale = self.min_cost_per_distance()
 
     def validate(self) -> None:
+        """Ensure start and end exist and are not blocked."""
         for name in (self.start, self.end):
             if name not in self.graph.zones:
                 raise ValueError(f"Unknown zone: {name!r}")
@@ -38,6 +39,7 @@ class PathFinder:
             raise ValueError(f"End zone is blocked: {self.end!r}")
 
     def min_cost_per_distance(self) -> float:
+        """Smallest move cost per unit of distance, for the heuristic."""
         ratios: list[float] = []
         for connection in self.graph.connections:
             zone_a = self.graph.zones[connection.zone_a]
@@ -58,8 +60,8 @@ class PathFinder:
         distance = dist((zone.x, zone.y), (end_zone.x, end_zone.y))
         return distance * self.heuristic_scale
 
-    def reconstruct_path(self, node: str, came_from: dict[str,
-                                                          str]) -> list[str]:
+    def reconstruct_path(self, node: str,
+                         came_from: dict[str, str]) -> list[str]:
         """Rebuild the ordered list of zone names from start to node."""
         path = [node]
         while node in came_from:
@@ -105,38 +107,46 @@ class PathFinder:
         raise NoPathError(f"No path from {self.start!r} to {self.end!r}")
 
 
-def k_shortest_paths(graph: Graph, start: str, end: str, k: int) -> list[Path]:
-    paths: list[Path] = []
-    seen_routes: set[tuple[str, ...]] = set()
-    tried: set[frozenset[frozenset[str]]] = set()
+class PathEnumerator:
+    """Finds up to k distinct cheap routes by excluding connections."""
 
-    candidates: list[tuple[float, int, Path, frozenset[frozenset[str]]]] = []
-    counter = 0
+    def __init__(self, graph: Graph, start: str, end: str) -> None:
+        self.graph = graph
+        self.start = start
+        self.end = end
+        self.seen_routes: set[tuple[str, ...]] = set()
+        self.tried: set[frozenset[frozenset[str]]] = set()
+        self.candidates: list[
+            tuple[float, int, Path, frozenset[frozenset[str]]]] = []
+        self.counter = 0
 
-    def push(excluded: frozenset[frozenset[str]]) -> None:
-        nonlocal counter
-        if excluded in tried:
+    def push(self, excluded: frozenset[frozenset[str]]) -> None:
+        """Queue the cheapest path avoiding the excluded connections."""
+        if excluded in self.tried:
             return
-        tried.add(excluded)
-        finder = PathFinder(graph, start, end, set(excluded))
+        self.tried.add(excluded)
+        finder = PathFinder(self.graph, self.start, self.end, set(excluded))
         try:
             path = finder.a_star()
         except NoPathError:
             return
-        if tuple(path.zones) in seen_routes:
+        if tuple(path.zones) in self.seen_routes:
             return
-        heapq.heappush(candidates, (path.total_cost, counter, path, excluded))
-        counter += 1
+        heapq.heappush(self.candidates,
+                       (path.total_cost, self.counter, path, excluded))
+        self.counter += 1
 
-    push(frozenset())
-    while candidates and len(paths) < k:
-        _, _, path, excluded = heapq.heappop(candidates)
-        route = tuple(path.zones)
-        if route in seen_routes:
-            continue
-        seen_routes.add(route)
-        paths.append(path)
-        for zone_a, zone_b in zip(path.zones, path.zones[1:]):
-            push(excluded | {frozenset((zone_a, zone_b))})
-
-    return paths
+    def find(self, k: int) -> list[Path]:
+        """Return up to k distinct paths, cheapest first."""
+        paths: list[Path] = []
+        self.push(frozenset())
+        while self.candidates and len(paths) < k:
+            _, _, path, excluded = heapq.heappop(self.candidates)
+            route = tuple(path.zones)
+            if route in self.seen_routes:
+                continue
+            self.seen_routes.add(route)
+            paths.append(path)
+            for zone_a, zone_b in zip(path.zones, path.zones[1:]):
+                self.push(excluded | {frozenset((zone_a, zone_b))})
+        return paths

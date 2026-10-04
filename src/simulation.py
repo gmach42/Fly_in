@@ -2,7 +2,7 @@
 
 import heapq
 
-from .pathfinding import NoPathError, k_shortest_paths
+from .pathfinding import NoPathError, PathEnumerator
 from .pydantic_models import Graph, Path
 
 MAX_PATHS = 10
@@ -15,7 +15,8 @@ class Simulation:
 
     def __init__(self, graph: Graph) -> None:
         self.graph = graph
-        self.paths = k_shortest_paths(graph, graph.start, graph.end, MAX_PATHS)
+        self.paths = PathEnumerator(graph, graph.start,
+                                    graph.end).find(MAX_PATHS)
         if not self.paths:
             raise NoPathError(f"No path from {graph.start!r} to {graph.end!r}")
         self.plans: list[list[Step]] = []
