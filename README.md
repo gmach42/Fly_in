@@ -252,6 +252,7 @@ Watching the animation makes the schedule easy to follow:
 An AI assistant (Claude, from Anthropic, through Claude Code) was used
 during the project:
 
-- **Debugging:** help pinpoint bugs to allow faster debugging.
-- **Docstring writing:** writing docstrings for the public functions and classes.
+- **Debugging:** help pinpoint bugs to allow faster debugging. Has been used to find a bug in the A\* implementation and a bug in the
+  simulation that caused drones to wait forever.
+- **Docstring writing:** writing docstrings.
 - **Documentation:** writing this README.

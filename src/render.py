@@ -392,14 +392,15 @@ class Gui:
         pygame.display.set_caption(f"Fly-in - {map_name}")
 
         offset = MapDrawer.compute_offset(zones, scale, w)
-        font = pygame.freetype.SysFont("Arial", 12, bold=True)
+        font = pygame.freetype.SysFont("Courier", 12, bold=True)
+        # A stagger is used to avoid overlapping labels
         stagger = MapDrawer.needs_stagger(zones, scale, font)
         drone_size = int(MapDrawer.hub_radius(scale) * DRONE_SIZE_RATIO)
         drone_image = pygame.transform.smoothscale(
             pygame.image.load(DRONE_IMAGE).convert_alpha(),
             (drone_size, drone_size),
         )
-        drone_font = pygame.freetype.SysFont("Arial",
+        drone_font = pygame.freetype.SysFont("Impact",
                                              max(8, drone_size // 2),
                                              bold=True)
         drone_labels = [
