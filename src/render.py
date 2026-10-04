@@ -36,6 +36,7 @@ MIN_WINDOW_WIDTH = 400
 SCREEN_RATIO = 0.9
 LABEL_GAP = 8
 TURNS_PER_SECOND = 1.0
+END_DELAY = 2.0
 
 Scale = tuple[float, float]
 
@@ -465,6 +466,9 @@ class Gui:
             return_btn.draw(screen)
 
             pygame.display.flip()
+
+            if elapsed >= len(lines) / TURNS_PER_SECOND + END_DELAY:
+                return GameState.TITLE
 
     @staticmethod
     def run_gui() -> None:
