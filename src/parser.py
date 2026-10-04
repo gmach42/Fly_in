@@ -116,6 +116,9 @@ def parse_map_file(filepath: str) -> Graph:
             if not sep:
                 raise ParseError(line_no,
                                  f"Expected 'key: value', got {line!r}")
+            if nb_drones is None and key != "nb_drones":
+                raise ParseError(line_no,
+                                 "The first line must define 'nb_drones'")
 
             if key == "nb_drones":
                 if nb_drones is not None:
