@@ -123,9 +123,11 @@ Action = GameState | str
 def get_maps(difficulty: str) -> list[str]:
     """Return map names for the given difficulty, formatted for display."""
     folder = MAPS_DIR / difficulty
-    if not folder.exists():
+    try:
+        return sorted(p.stem.replace("_", " ") for p in folder.glob("*.txt"))
+    except OSError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
         return []
-    return sorted(p.stem.replace("_", " ") for p in folder.glob("*.txt"))
 
 
 def create_surface_with_text(
