@@ -11,13 +11,15 @@ ZONE_MOVE_COST: dict[ZoneType, float] = {
     "blocked": float("inf"),
 }
 
+MAX_COORDINATE = 100
+
 
 class Zone(BaseModel):
     """A zone (hub) in the map."""
 
     name: str
-    x: int
-    y: int
+    x: int = Field(ge=-MAX_COORDINATE, le=MAX_COORDINATE)
+    y: int = Field(ge=-MAX_COORDINATE, le=MAX_COORDINATE)
     zone_type: ZoneType = "normal"
     color: str | None = None
     max_drones: int = 1

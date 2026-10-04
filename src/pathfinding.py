@@ -110,7 +110,7 @@ def k_shortest_paths(graph: Graph, start: str, end: str, k: int) -> list[Path]:
     paths: list[Path] = []
     seen_routes: set[tuple[str, ...]] = set()
     tried: set[frozenset[frozenset[str]]] = set()
-    # (total_cost, tie-breaker, path, excluded connections)
+
     candidates: list[tuple[float, int, Path, frozenset[frozenset[str]]]] = []
     counter = 0
 
