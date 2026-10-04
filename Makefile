@@ -1,7 +1,6 @@
 PYTHON := uv run python
 FLAKE8 := uv run flake8
 MYPY := uv run mypy
-PYTEST := uv run pytest
 LINT_PATHS := src
 
 install:
@@ -12,9 +11,6 @@ run:
 
 debug:
 	$(PYTHON) -m pdb -m src
-
-test:
-	$(PYTEST)
 
 test-verbose:
 	$(PYTEST) -v

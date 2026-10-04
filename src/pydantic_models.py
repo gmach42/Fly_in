@@ -93,14 +93,6 @@ class Connection(BaseModel):
         raise ValueError(f"{zone_name!r} is not part of this connection")
 
 
-class Drone(BaseModel):
-    """A drone travelling through the graph."""
-
-    id: int
-    current_zone: str
-    state: Literal["idle", "waiting", "moving", "arrived"] = "idle"
-
-
 class Graph(BaseModel):
     """The full map: zones, connections and the start/end hubs."""
 

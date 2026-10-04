@@ -23,21 +23,21 @@ The program:
   the subject;
 - animates the drones on a drawing of the network with pygame.
 
-It reaches the optimal number of turns given by the subject on every map
-provided, including the optional challenger map:
+Number of turns on the maps provided. The optional challenger map is solved
+in 43 turns, under the 45-turn record given with the maps:
 
-| Map | Drones | Turns | Optimum |
-|---|---|---|---|
-| easy/01_linear_path | 2 | 4 | 4 |
-| easy/02_simple_fork | 4 | 4 | 4 |
-| easy/03_basic_capacity | 4 | 4 | 4 |
-| medium/01_dead_end_trap | 5 | 8 | 8 |
-| medium/02_circular_loop | 6 | 10 | 10 |
-| medium/03_priority_puzzle | 5 | 6 | 6 |
-| hard/01_maze_nightmare | 8 | 13 | 13 |
-| hard/02_capacity_hell | 12 | 16 | 16 |
-| hard/03_ultimate_challenge | 15 | 26 | 26 |
-| challenger/01_the_impossible_dream | 25 | 43 | 43 |
+| Map | Drones | Turns |
+|---|---|---|
+| easy/01_linear_path | 2 | 4 |
+| easy/02_simple_fork | 4 | 4 |
+| easy/03_basic_capacity | 4 | 4 |
+| medium/01_dead_end_trap | 5 | 8 |
+| medium/02_circular_loop | 6 | 15 |
+| medium/03_priority_puzzle | 5 | 7 |
+| hard/01_maze_nightmare | 8 | 13 |
+| hard/02_capacity_hell | 12 | 16 |
+| hard/03_ultimate_challenge | 15 | 26 |
+| challenger/01_the_impossible_dream | 25 | 43 |
 
 ## Instructions
 
@@ -63,8 +63,10 @@ Run the commands from the root of the repository.
    then the drones are animated in the window.
 4. Press `ESC` or click "Return to main menu" to go back to the menu.
 
-If a map is invalid or has no path from start to end, the error is printed
-in the terminal and the program goes back to the menu instead of crashing.
+Every map file of `maps/` is parsed at startup: if one of them is invalid,
+its error is printed and the program exits before opening the menu. If the
+selected map has no path from start to end, the error is printed and the
+program exits.
 
 ## Example
 
@@ -100,20 +102,27 @@ connection accept 2 drones at a time, while `path_a` and `path_b` accept
 only one each.
 
 A drone flying towards a restricted zone is written with the connection it
-is on, as written in the map (`D<ID>-<connection>`). With a restricted zone
-of capacity 2 between `a` and `goal`:
+is on, as written in the map (`D<ID>-<connection>`). With 2 drones, a hub
+`a` of capacity 2, then a restricted zone of capacity 2 reached by a
+connection of capacity 1, then `goal`:
 
 ```
+D1-a
 D1-a-restrictedZone
-D1-restrictedZone D2-a-restrictedZone
-D1-goal D2-restrictedZone
+D1-restrictedZone D2-a
+D1-goal D2-a-restrictedZone
+D2-restrictedZone
 D2-goal
 ```
+
+The connection to the restricted zone is used during both turns of the
+flight, so `D2` can only take off after `D1` has landed.
 
 Errors, for example an unknown zone type or a map with no path:
 
 ```
-Error: Line 3: 1 validation error for Zone
+Error: Line 3: 
+  zone_type: Input should be 'normal', 'priority', 'restricted' or 'blocked'
 Error: No path from 'a' to 'g'
 ```
 
@@ -138,9 +147,11 @@ priority zones, 2 for restricted zones. Blocked zones are never entered. The
 heuristic is the Euclidean distance to the end hub, scaled down so that it
 never overestimates the real cost: A\* then always returns an optimal path,
 like Dijkstra, while exploring fewer zones. The open set is a binary heap
-(`heapq`).
+(`heapq`). Between two paths of equal cost, A\* keeps the one that goes
+through the most priority zones.
 
-`k_shortest_paths` returns up to `k` distinct paths, cheapest first (k = 10).
+`k_shortest_paths` returns up to `k` distinct paths, cheapest first, then
+with the most priority zones first (k = 10).
 It is a simplified version of Yen's algorithm:
 
 1. Run A\* to get the best path.
@@ -178,8 +189,7 @@ This table implements the movement rules of the subject:
   a turn can be entered in the same turn (a column of drones advances one
   step per turn);
 - a move into a restricted zone takes 2 turns. The drone uses the connection
-  on the first turn only, since the subject frees a restricted connection on
-  the arrival turn, and a slot must be free in the zone on the second turn.
+  during both turns, and a slot must be free in the zone on the second turn.
   A drone therefore never starts a flight it cannot finish, and never waits
   on a connection.
 
@@ -194,9 +204,8 @@ Why this approach:
   waits, whichever delivers it earlier.
 - **It anticipates.** A turn-by-turn simulation cannot start a drone towards
   a restricted zone that is still occupied, even when that zone will be free
-  when the drone arrives. The reservation table knows it, which is what lets
-  drones enter a restricted zone at every turn on `circular_loop` (10 turns
-  instead of 15).
+  when the drone arrives. The reservation table knows it, so the drone can
+  take off one turn earlier.
 
 ### Complexity and memory
 
@@ -214,15 +223,15 @@ Why this approach:
 The simulation is shown in a pygame window:
 
 - **The network:** each zone is a circle drawn in the `color` given in the
-  map file (gray when none is given), with its name below it. The
-  connections are drawn as lines.
-- **The drones** are drawn as small potatoes (`potato.png`). They glide
-  from their position at one turn to their position at the next, at one
-  turn per second.
+  map file (gray when none is given), with its name below it. On dense
+  maps, where the names would overlap, every other column has its names
+  above the zones. The connections are drawn as lines.
+- **The drones** are drawn as small potatoes (`potato.png`) with their
+  number in red. They glide from their position at one turn to their
+  position at the next, at one turn per second. The window goes back to the
+  menu 2 seconds after the last turn.
 - **Restricted moves:** a drone flying towards a restricted zone stops in
   the middle of the connection for one turn, which shows the 2-turn cost.
-- **Several drones in one zone** are drawn slightly shifted from each
-  other, so that they stay visible.
 - **The terminal** shows the same turns as text, in the subject's format.
 
 Watching the animation makes the schedule easy to follow:
