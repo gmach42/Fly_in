@@ -31,55 +31,74 @@ MENU_SCREEN_SIZE = (800, 600)
 SCALE = 150
 MARGIN = 80
 HUB_RADIUS = 30
-MAX_WINDOW_WIDTH = 1800
+BOTTOM_MARGIN = 120
+MIN_WINDOW_WIDTH = 400
+SCREEN_RATIO = 0.9
+LABEL_GAP = 8
 TURNS_PER_SECOND = 1.0
+
+Scale = tuple[float, float]
 
 
 class MapDrawer:
     """Computes the map layout and draws hubs and connections."""
 
     @staticmethod
-    def compute_scale(zones: list[Zone]) -> int:
-        """SCALE, or less so that wide maps fit in MAX_WINDOW_WIDTH."""
-        max_x = max(z.x for z in zones)
-        return min(SCALE, (MAX_WINDOW_WIDTH - 2 * MARGIN) // max(max_x, 1))
+    def compute_scale(zones: list[Zone]) -> Scale:
+        """Pixels per grid unit on each axis, shrunk to fit the screen."""
+        desktop_w, desktop_h = pygame.display.get_desktop_sizes()[0]
+        span_x = max(z.x for z in zones) - min(z.x for z in zones)
+        span_y = max(z.y for z in zones) - min(z.y for z in zones)
+        avail_w = desktop_w * SCREEN_RATIO - 2 * MARGIN
+        avail_h = desktop_h * SCREEN_RATIO - MARGIN - BOTTOM_MARGIN
+        return (min(SCALE, avail_w / max(span_x, 1)),
+                min(SCALE, avail_h / max(span_y, 1)))
 
     @staticmethod
-    def compute_window_size(zones: list[Zone], scale: int) -> tuple[int, int]:
+    def compute_window_size(zones: list[Zone],
+                            scale: Scale) -> tuple[int, int]:
         """Window size needed to show the whole map."""
-        max_x = max(z.x for z in zones)
-        max_y = max(z.y for z in zones)
-        min_y = min(z.y for z in zones)  # y can be negative
-        width = (max_x) * scale + 2 * MARGIN
-        height = (max_y - min_y + 1) * scale + 2 * MARGIN
+        span_x = max(z.x for z in zones) - min(z.x for z in zones)
+        span_y = max(z.y for z in zones) - min(z.y for z in zones)
+        width = max(int(span_x * scale[0]) + 2 * MARGIN, MIN_WINDOW_WIDTH)
+        height = int(span_y * scale[1]) + MARGIN + BOTTOM_MARGIN
         return (width, height)
 
     @staticmethod
-    def compute_offset(zones: list[Zone], scale: int) -> tuple[int, int]:
-        """Pixel position of the grid origin."""
+    def compute_offset(zones: list[Zone], scale: Scale,
+                       width: int) -> tuple[float, float]:
+        """Pixel position of the grid origin, map centered horizontally."""
+        min_x = min(z.x for z in zones)
+        span_x = max(z.x for z in zones) - min_x
         max_y = max(z.y for z in zones)
-        min_y = min(z.y for z in zones)
-
-        offset_x = MARGIN
-
-        screen_height = (max_y - min_y + 1) * scale + 2 * MARGIN
-        offset_y = screen_height // 2
-
-        return (offset_x, offset_y)
+        return ((width - span_x * scale[0]) / 2 - min_x * scale[0],
+                MARGIN + max_y * scale[1])
 
     @staticmethod
-    def grid_to_px(x: float, y: float, offset: tuple[int, int],
-                   scale: int) -> tuple[float, float]:
+    def grid_to_px(x: float, y: float, offset: tuple[float, float],
+                   scale: Scale) -> tuple[float, float]:
         """Pixel position of a grid point."""
-        return (offset[0] + x * scale, offset[1] - y * scale)
+        return (offset[0] + x * scale[0], offset[1] - y * scale[1])
+
+    @staticmethod
+    def hub_radius(scale: Scale) -> int:
+        """Hub radius in pixels, smaller on dense maps."""
+        return max(4, int(HUB_RADIUS * min(scale) / SCALE))
+
+    @staticmethod
+    def needs_stagger(zones: list[Zone], scale: Scale,
+                      font: pygame.freetype.Font) -> bool:
+        """Whether labels are wider than the space between two hubs."""
+        widest = max(font.get_rect(z.name).width for z in zones)
+        return widest + LABEL_GAP > scale[0]
 
     @staticmethod
     def draw_connection(
         screen: pygame.Surface,
         zone_a: Zone,
         zone_b: Zone,
-        offset: tuple[int, int],
-        scale: int,
+        offset: tuple[float, float],
+        scale: Scale,
     ) -> None:
         """Draw a line between two zones."""
         pos_a = MapDrawer.grid_to_px(zone_a.x, zone_a.y, offset, scale)
@@ -90,13 +109,14 @@ class MapDrawer:
     def draw_hub(
         screen: pygame.Surface,
         zone: Zone,
-        offset: tuple[int, int],
-        scale: int,
+        offset: tuple[float, float],
+        scale: Scale,
         font: pygame.freetype.Font,
+        stagger: bool,
     ) -> None:
-        """Draw a zone circle in its map color, with its name below."""
+        """Draw a zone circle in its map color, with its name below/above."""
         pos = MapDrawer.grid_to_px(zone.x, zone.y, offset, scale)
-        radius = HUB_RADIUS * scale // SCALE
+        radius = MapDrawer.hub_radius(scale)
         try:
             color = pygame.Color(zone.color or "gray")
         except ValueError:
@@ -104,15 +124,18 @@ class MapDrawer:
         pygame.draw.circle(screen, color, pos, radius)
         label_surf, label_rect = font.render(zone.name, BLACK)
         label_rect.centerx = int(pos[0])
-        label_rect.top = int(pos[1]) + radius + 4
+        if stagger and zone.x % 2:
+            label_rect.bottom = int(pos[1]) - radius - 4
+        else:
+            label_rect.top = int(pos[1]) + radius + 4
         screen.blit(label_surf, label_rect)
 
     @staticmethod
     def step_to_px(
         step: Step,
         graph_zones: dict[str, Zone],
-        offset: tuple[int, int],
-        scale: int,
+        offset: tuple[float, float],
+        scale: Scale,
     ) -> tuple[float, float]:
         """Pixel position of a drone, mid-connection when in flight."""
         zone_a, zone_b = graph_zones[step[0]], graph_zones[step[1]]
@@ -366,9 +389,10 @@ class Gui:
         screen = pygame.display.set_mode((w, h))
         pygame.display.set_caption(f"Fly-in - {map_name}")
 
-        offset = MapDrawer.compute_offset(zones, scale)
+        offset = MapDrawer.compute_offset(zones, scale, w)
         font = pygame.freetype.SysFont("Arial", 12, bold=True)
-        drone_size = HUB_RADIUS * scale // SCALE
+        stagger = MapDrawer.needs_stagger(zones, scale, font)
+        drone_size = MapDrawer.hub_radius(scale)
         drone_image = pygame.transform.smoothscale(
             pygame.image.load(DRONE_IMAGE).convert_alpha(),
             (drone_size, drone_size),
@@ -382,7 +406,7 @@ class Gui:
         ]
 
         return_btn = UIElement(
-            (140, h - 40),
+            (140, h - 30),
             "Return to main menu",
             20,
             WHITE,
@@ -413,7 +437,8 @@ class Gui:
                                           offset, scale)
 
             for zone in zones:
-                MapDrawer.draw_hub(screen, zone, offset, scale, font)
+                MapDrawer.draw_hub(screen, zone, offset, scale, font,
+                                   stagger)
 
             elapsed = (pygame.time.get_ticks() - start_ticks) / 1000
             progress = min(elapsed * TURNS_PER_SECOND, len(lines))
