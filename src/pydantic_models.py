@@ -25,6 +25,7 @@ class Zone(BaseModel):
     @field_validator("name")
     @classmethod
     def no_dashes(cls, v: str) -> str:
+        """Ensure the zone name does not contain dashes."""
         if "-" in v:
             raise ValueError("Zone name cannot contain dashes")
         return v
@@ -32,6 +33,7 @@ class Zone(BaseModel):
     @field_validator("max_drones")
     @classmethod
     def positive_capacity(cls, v: int) -> int:
+        """Ensure the max_drones is a positive integer."""
         if v <= 0:
             raise ValueError("max_drones must be a positive integer")
         return v
@@ -56,20 +58,24 @@ class Connection(BaseModel):
     @field_validator("max_link_capacity")
     @classmethod
     def positive_capacity(cls, v: int) -> int:
+        """Ensure the max_link_capacity is a positive integer."""
         if v <= 0:
             raise ValueError("max_link_capacity must be a positive integer")
         return v
 
     @model_validator(mode="after")
     def no_self_loop(self) -> "Connection":
+        """Ensure that a connection does not link a zone to itself."""
         if self.zone_a == self.zone_b:
             raise ValueError("A connection cannot link a zone to itself")
         return self
 
     def links(self, zone_name: str) -> bool:
+        """Check if the given zone is part of this connection."""
         return zone_name in (self.zone_a, self.zone_b)
 
     def other_side(self, zone_name: str) -> str:
+        """Given one zone in the connection, return the other side."""
         if zone_name == self.zone_a:
             return self.zone_b
         if zone_name == self.zone_b:
@@ -97,6 +103,7 @@ class Graph(BaseModel):
     @field_validator("nb_drones")
     @classmethod
     def positive_drones(cls, v: int) -> int:
+        """Ensure the number of drones is a positive integer."""
         if v <= 0:
             raise ValueError("nb_drones must be a positive integer")
         return v
@@ -117,6 +124,11 @@ class Graph(BaseModel):
 
     @model_validator(mode="after")
     def check_consistency(self) -> "Graph":
+        """Ensure the graph is internally consistent:
+
+        start/end hubs exist, no duplicate connections,
+        all connections reference known zones.
+        """
         if self.start not in self.zones:
             raise ValueError(f"Unknown start hub: {self.start!r}")
         if self.end not in self.zones:
@@ -139,11 +151,13 @@ class Graph(BaseModel):
         return self
 
     def add_zone(self, zone: Zone) -> None:
+        """Add a new zone to the graph."""
         if zone.name in self.zones:
             raise ValueError(f"Duplicate zone name: {zone.name!r}")
         self.zones[zone.name] = zone
 
     def add_connection(self, connection: Connection) -> None:
+        """Add a new connection to the graph."""
         for zone_name in (connection.zone_a, connection.zone_b):
             if zone_name not in self.zones:
                 raise ValueError(
@@ -152,6 +166,7 @@ class Graph(BaseModel):
         self.connections.append(connection)
 
     def get_neighbors(self, zone_name: str) -> list[str]:
+        """Return a list of neighboring zone names for the given zone."""
         return [
             connection.other_side(zone_name)
             for connection in self.connections
@@ -159,6 +174,7 @@ class Graph(BaseModel):
         ]
 
     def get_connection(self, zone_a: str, zone_b: str) -> Connection | None:
+        """Return the connection object between two zones"""
         for connection in self.connections:
             if {connection.zone_a, connection.zone_b} == {zone_a, zone_b}:
                 return connection

@@ -255,3 +255,54 @@ from simulation import DeadlockError, Simulation
 def run_in_terminal(map_file: str) -> int:
 def main() -> None
 
+
+=========================================================
+
+
+#===simulation.py===
+
+import heapq
+from .pathfinding import NoPathError, k_shortest_paths
+from .pydantic_models impoert Graph, Path
+
+MAX_PATHS = 10
+Step = tuple [str, str]
+
+class Simulation
+	def __init__(self, graph: Graph) -> None
+		graph
+		paths
+		plans
+		_zone_slots
+		_link_slots
+		last_turn
+
+def run(self) -> list[str]
+def _schedule(self, path) -> list[Step]
+def	_to_plan
+def _reserve
+def _is_limited
+def _zone_free
+def _link_free
+def _restricted
+def _turn_line
+des position
+
+
+#===parser.py===
+
+from typing import TypeVar
+from pydantic import BaseModel, ValidationError
+form.pydantic_models inport Connection, Graph, Zone
+
+M = TypeVar("M", bound=BaseModel)
+
+class ParseError(Exception):
+	def __init__
+
+def _parse_int
+def _parse_metadata
+def _validate
+def _parse_hub
+def _parse_connection
+def parse_map_file

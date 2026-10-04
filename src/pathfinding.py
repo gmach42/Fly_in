@@ -1,6 +1,5 @@
 """A* search for the cheapest path between two zones of a Graph."""
 
-
 import heapq
 from math import dist
 
@@ -26,10 +25,10 @@ class PathFinder:
         self.start = start
         self.end = end
         self.excluded_connections = excluded_connections or set()
-        self._validate()
-        self._heuristic_scale = self._min_cost_per_distance()
+        self.validate()
+        self.heuristic_scale = self.min_cost_per_distance()
 
-    def _validate(self) -> None:
+    def validate(self) -> None:
         for name in (self.start, self.end):
             if name not in self.graph.zones:
                 raise ValueError(f"Unknown zone: {name!r}")
@@ -38,7 +37,7 @@ class PathFinder:
         if self.graph.zones[self.end].is_blocked:
             raise ValueError(f"End zone is blocked: {self.end!r}")
 
-    def _min_cost_per_distance(self) -> float:
+    def min_cost_per_distance(self) -> float:
         ratios: list[float] = []
         for connection in self.graph.connections:
             zone_a = self.graph.zones[connection.zone_a]
@@ -57,11 +56,10 @@ class PathFinder:
         zone = self.graph.zones[zone_name]
         end_zone = self.graph.zones[self.end]
         distance = dist((zone.x, zone.y), (end_zone.x, end_zone.y))
-        return distance * self._heuristic_scale
+        return distance * self.heuristic_scale
 
-    def reconstruct_path(
-        self, node: str, came_from: dict[str, str]
-    ) -> list[str]:
+    def reconstruct_path(self, node: str, came_from: dict[str,
+                                                          str]) -> list[str]:
         """Rebuild the ordered list of zone names from start to node."""
         path = [node]
         while node in came_from:
@@ -113,9 +111,7 @@ def k_shortest_paths(graph: Graph, start: str, end: str, k: int) -> list[Path]:
     seen_routes: set[tuple[str, ...]] = set()
     tried: set[frozenset[frozenset[str]]] = set()
     # (total_cost, tie-breaker, path, excluded connections)
-    candidates: list[
-        tuple[float, int, Path, frozenset[frozenset[str]]]
-    ] = []
+    candidates: list[tuple[float, int, Path, frozenset[frozenset[str]]]] = []
     counter = 0
 
     def push(excluded: frozenset[frozenset[str]]) -> None:

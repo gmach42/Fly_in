@@ -4,7 +4,6 @@ from pydantic import BaseModel, ValidationError
 
 from .pydantic_models import Connection, Graph, Zone
 
-
 M = TypeVar("M", bound=BaseModel)
 
 
@@ -14,16 +13,26 @@ class ParseError(Exception):
         super().__init__(msg if line_no is None else f"Line {line_no}: {msg}")
 
 
-def _parse_int(text: str, line_no: int, field: str) -> int:
+def format_errors(exc: ValidationError) -> str:
+    """Format Pydantic validation errors for display."""
+    lines = []
+    for err in exc.errors(include_url=False, include_context=False):
+        loc = ".".join(str(p) for p in err["loc"])
+        msg = err["msg"].removeprefix("Value error, ")
+        prefix = f"{loc}: " if loc else ""
+        lines.append(f"  {prefix}{msg}")
+    return "\n" + "\n".join(lines)
+
+
+def parse_int(text: str, line_no: int, field: str) -> int:
     """Parse a non-negative integer, e.g. the value of 'max_drones=4'."""
     if not text.isdigit():
-        raise ParseError(
-            line_no, f"Expected an integer for {field!r}, got {text!r}"
-        )
+        raise ParseError(line_no,
+                         f"Expected an integer for {field!r}, got {text!r}")
     return int(text)
 
 
-def _parse_metadata(text: str, line_no: int) -> dict[str, str]:
+def parse_metadata(text: str, line_no: int) -> dict[str, str]:
     """Parse a trailing '[key=value key2=value2]' block, if present."""
     if not text:
         return {}
@@ -41,8 +50,8 @@ def _parse_metadata(text: str, line_no: int) -> dict[str, str]:
     return metadata
 
 
-def _validate(model: type[M], data: dict[str, object],
-              line_no: int | None) -> M:
+def validate(model: type[M], data: dict[str, object],
+             line_no: int | None) -> M:
     """Build a pydantic model, turning validation errors into ParseError."""
     try:
         return model.model_validate(data)
@@ -50,15 +59,14 @@ def _validate(model: type[M], data: dict[str, object],
         raise ParseError(line_no, str(exc)) from exc
 
 
-def _parse_hub(text: str, line_no: int) -> Zone:
+def parse_hub(text: str, line_no: int) -> Zone:
     """Parse 'waypoint1 1 0 [color=blue max_drones=2]' into a Zone."""
     parts = text.split(maxsplit=3)
     if len(parts) < 3:
-        raise ParseError(
-            line_no, f"Expected 'name x y [metadata]', got {text!r}"
-        )
+        raise ParseError(line_no,
+                         f"Expected 'name x y [metadata]', got {text!r}")
     name, x, y = parts[:3]
-    metadata = _parse_metadata(parts[3] if len(parts) == 4 else "", line_no)
+    metadata = parse_metadata(parts[3] if len(parts) == 4 else "", line_no)
 
     data: dict[str, object] = {"name": name}
     try:
@@ -70,26 +78,24 @@ def _parse_hub(text: str, line_no: int) -> Zone:
     if "color" in metadata:
         data["color"] = metadata["color"]
     if "max_drones" in metadata:
-        data["max_drones"] = _parse_int(
-            metadata["max_drones"], line_no, "max_drones"
-        )
-    return _validate(Zone, data, line_no)
+        data["max_drones"] = parse_int(metadata["max_drones"], line_no,
+                                       "max_drones")
+    return validate(Zone, data, line_no)
 
 
-def _parse_connection(text: str, line_no: int) -> Connection:
+def parse_connection(text: str, line_no: int) -> Connection:
     """Parse 'start-waypoint1 [max_link_capacity=2]' into a Connection."""
     hubs, *rest = text.split(maxsplit=1) or [""]
     zone_a, sep, zone_b = hubs.partition("-")
     if not sep:
         raise ParseError(line_no, f"Expected 'hub1-hub2', got {hubs!r}")
-    metadata = _parse_metadata(rest[0] if rest else "", line_no)
+    metadata = parse_metadata(rest[0] if rest else "", line_no)
 
     data: dict[str, object] = {"zone_a": zone_a, "zone_b": zone_b}
     if "max_link_capacity" in metadata:
-        data["max_link_capacity"] = _parse_int(
-            metadata["max_link_capacity"], line_no, "max_link_capacity"
-        )
-    return _validate(Connection, data, line_no)
+        data["max_link_capacity"] = parse_int(metadata["max_link_capacity"],
+                                              line_no, "max_link_capacity")
+    return validate(Connection, data, line_no)
 
 
 def parse_map_file(filepath: str) -> Graph:
@@ -108,33 +114,29 @@ def parse_map_file(filepath: str) -> Graph:
             key, sep, value = line.partition(":")
             key, value = key.strip(), value.strip()
             if not sep:
-                raise ParseError(
-                    line_no, f"Expected 'key: value', got {line!r}"
-                )
+                raise ParseError(line_no,
+                                 f"Expected 'key: value', got {line!r}")
 
             if key == "nb_drones":
                 if nb_drones is not None:
-                    raise ParseError(
-                        line_no, "Duplicate 'nb_drones' definition"
-                    )
-                nb_drones = _parse_int(value, line_no, "nb_drones")
+                    raise ParseError(line_no,
+                                     "Duplicate 'nb_drones' definition")
+                nb_drones = parse_int(value, line_no, "nb_drones")
             elif key in ("hub", "start_hub", "end_hub"):
-                zone = _parse_hub(value, line_no)
+                zone = parse_hub(value, line_no)
                 if key == "start_hub":
                     if start is not None:
-                        raise ParseError(
-                            line_no, "Multiple 'start_hub' definitions"
-                        )
+                        raise ParseError(line_no,
+                                         "Multiple 'start_hub' definitions")
                     start = zone.name
                 elif key == "end_hub":
                     if end is not None:
-                        raise ParseError(
-                            line_no, "Multiple 'end_hub' definitions"
-                        )
+                        raise ParseError(line_no,
+                                         "Multiple 'end_hub' definitions")
                     end = zone.name
                 zones.append(zone)
             elif key == "connection":
-                connections.append(_parse_connection(value, line_no))
+                connections.append(parse_connection(value, line_no))
             else:
                 raise ParseError(line_no, f"Unknown key: {key!r}")
 
@@ -147,10 +149,11 @@ def parse_map_file(filepath: str) -> Graph:
 
     # zones is given as a list, turned into a dict (rejecting duplicate
     # names) by Graph.zones_from_list.
-    return _validate(Graph, {
-        "nb_drones": nb_drones,
-        "start": start,
-        "end": end,
-        "zones": zones,
-        "connections": connections,
-    }, None)
+    return validate(
+        Graph, {
+            "nb_drones": nb_drones,
+            "start": start,
+            "end": end,
+            "zones": zones,
+            "connections": connections,
+        }, None)

@@ -28,12 +28,12 @@ class Simulation:
     def run(self) -> list[str]:
         """Schedule every drone; return one output line per turn."""
         for _ in range(self.graph.nb_drones):
-            plan = min((self._schedule(path) for path in self.paths), key=len)
-            self._reserve(plan)
+            plan = min((self.schedule(path) for path in self.paths), key=len)
+            self.reserve(plan)
             self.plans.append(plan)
-        return [self._turn_line(turn) for turn in range(1, self.last_turn + 1)]
+        return [self.turn_line(turn) for turn in range(1, self.last_turn + 1)]
 
-    def _schedule(self, path: Path) -> list[Step]:
+    def schedule(self, path: Path) -> list[Step]:
         """Earliest way to follow path, waiting where needed."""
         zones = path.zones
         # Past the last reservation everything is free, so a schedule is
@@ -44,16 +44,16 @@ class Simulation:
         while queue:
             turn, index = heapq.heappop(queue)
             if index == len(zones) - 1:
-                return self._to_plan(zones, (turn, index), parents)
+                return self.to_plan(zones, (turn, index), parents)
             if turn > horizon:
                 break
             here, target = zones[index], zones[index + 1]
             next_states = []
-            if self._zone_free(here, turn + 1):
+            if self.zone_free(here, turn + 1):
                 next_states.append((turn + 1, index))
-            if self._link_free(here, target, turn + 1):
-                arrival = turn + (2 if self._restricted(target) else 1)
-                if self._zone_free(target, arrival):
+            if self.link_free(here, target, turn + 1):
+                arrival = turn + (2 if self.restricted(target) else 1)
+                if self.zone_free(target, arrival):
                     next_states.append((arrival, index + 1))
             for state in next_states:
                 if state not in parents:
@@ -61,7 +61,7 @@ class Simulation:
                     heapq.heappush(queue, state)
         raise NoPathError(f"No schedule found along {zones}")
 
-    def _to_plan(
+    def to_plan(
         self,
         zones: list[str],
         state: tuple[int, int],
@@ -79,11 +79,11 @@ class Simulation:
             plan.append((zones[next_index], zones[next_index]))
         return plan
 
-    def _reserve(self, plan: list[Step]) -> None:
+    def reserve(self, plan: list[Step]) -> None:
         """Book the zone and link slots used by plan."""
         for turn in range(1, len(plan)):
             (prev_zone, prev_target), (zone, target) = plan[turn - 1:turn + 1]
-            if zone == target and self._is_limited(zone):
+            if zone == target and self.is_limited(zone):
                 key = (zone, turn)
                 self.zone_slots[key] = self.zone_slots.get(key, 0) + 1
             # The link is used on the turn the drone leaves a zone.
@@ -92,35 +92,35 @@ class Simulation:
                 self.link_slots[link] = self.link_slots.get(link, 0) + 1
         self.last_turn = max(self.last_turn, len(plan) - 1)
 
-    def _is_limited(self, zone: str) -> bool:
+    def is_limited(self, zone: str) -> bool:
         """Start and end hubs have no capacity limit."""
         return zone not in (self.graph.start, self.graph.end)
 
-    def _zone_free(self, zone: str, turn: int) -> bool:
-        if not self._is_limited(zone):
+    def zone_free(self, zone: str, turn: int) -> bool:
+        if not self.is_limited(zone):
             return True
         used = self.zone_slots.get((zone, turn), 0)
         return used < self.graph.zones[zone].max_drones
 
-    def _link_free(self, zone_a: str, zone_b: str, turn: int) -> bool:
+    def link_free(self, zone_a: str, zone_b: str, turn: int) -> bool:
         connection = self.graph.get_connection(zone_a, zone_b)
         if connection is None:
             return False
         used = self.link_slots.get((frozenset((zone_a, zone_b)), turn), 0)
         return used < connection.max_link_capacity
 
-    def _restricted(self, zone: str) -> bool:
+    def restricted(self, zone: str) -> bool:
         return self.graph.zones[zone].zone_type == "restricted"
 
-    def _turn_line(self, turn: int) -> str:
-        """Moves of every drone during turn, e.g. "D1-a D2-a-b"."""
+    def turn_line(self, turn: int) -> str:
+        """Write the moves of every drone during the given turn"""
         moves: list[str] = []
         for drone_id, plan in enumerate(self.plans, start=1):
             if turn < len(plan) and plan[turn] != plan[turn - 1]:
                 zone, target = plan[turn]
                 if zone == target:
                     moves.append(f"D{drone_id}-{zone}")
-                else:  # in flight: the connection as written in the map
+                else:
                     connection = self.graph.get_connection(zone, target)
                     if connection is not None:
                         name = f"{connection.zone_a}-{connection.zone_b}"

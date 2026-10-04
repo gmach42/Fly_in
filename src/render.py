@@ -16,6 +16,7 @@ MAPS_DIR = Path(__file__).parent.parent / "maps"
 DRONE_IMAGE = Path(__file__).parent.parent / "potato.png"
 DIFFICULTIES = ["easy", "medium", "hard", "challenger"]
 
+# colors
 WHITE = (255, 255, 255)
 BLUE = (0, 0, 255)
 RED = (255, 0, 0)
