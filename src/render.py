@@ -45,8 +45,7 @@ class MapDrawer:
         return min(SCALE, (MAX_WINDOW_WIDTH - 2 * MARGIN) // max(max_x, 1))
 
     @staticmethod
-    def compute_window_size(zones: list[Zone],
-                            scale: int) -> tuple[int, int]:
+    def compute_window_size(zones: list[Zone], scale: int) -> tuple[int, int]:
         """Window size needed to show the whole map."""
         max_x = max(z.x for z in zones)
         max_y = max(z.y for z in zones)
@@ -69,16 +68,18 @@ class MapDrawer:
         return (offset_x, offset_y)
 
     @staticmethod
-    def grid_to_px(
-        x: float, y: float, offset: tuple[int, int], scale: int
-    ) -> tuple[float, float]:
+    def grid_to_px(x: float, y: float, offset: tuple[int, int],
+                   scale: int) -> tuple[float, float]:
         """Pixel position of a grid point."""
         return (offset[0] + x * scale, offset[1] - y * scale)
 
     @staticmethod
     def draw_connection(
-        screen: pygame.Surface, zone_a: Zone, zone_b: Zone,
-        offset: tuple[int, int], scale: int,
+        screen: pygame.Surface,
+        zone_a: Zone,
+        zone_b: Zone,
+        offset: tuple[int, int],
+        scale: int,
     ) -> None:
         """Draw a line between two zones."""
         pos_a = MapDrawer.grid_to_px(zone_a.x, zone_a.y, offset, scale)
@@ -87,8 +88,11 @@ class MapDrawer:
 
     @staticmethod
     def draw_hub(
-        screen: pygame.Surface, zone: Zone, offset: tuple[int, int],
-        scale: int, font: pygame.freetype.Font,
+        screen: pygame.Surface,
+        zone: Zone,
+        offset: tuple[int, int],
+        scale: int,
+        font: pygame.freetype.Font,
     ) -> None:
         """Draw a zone circle in its map color, with its name below."""
         pos = MapDrawer.grid_to_px(zone.x, zone.y, offset, scale)
@@ -105,14 +109,15 @@ class MapDrawer:
 
     @staticmethod
     def step_to_px(
-        step: Step, graph_zones: dict[str, Zone],
-        offset: tuple[int, int], scale: int,
+        step: Step,
+        graph_zones: dict[str, Zone],
+        offset: tuple[int, int],
+        scale: int,
     ) -> tuple[float, float]:
         """Pixel position of a drone, mid-connection when in flight."""
         zone_a, zone_b = graph_zones[step[0]], graph_zones[step[1]]
         return MapDrawer.grid_to_px((zone_a.x + zone_b.x) / 2,
-                                    (zone_a.y + zone_b.y) / 2,
-                                    offset, scale)
+                                    (zone_a.y + zone_b.y) / 2, offset, scale)
 
 
 class MapFiles:
@@ -133,11 +138,29 @@ class MapFiles:
         """Return map names for the given difficulty, formatted for display."""
         folder = MAPS_DIR / difficulty
         try:
-            return sorted(p.stem.replace("_", " ")
-                          for p in folder.glob("*.txt"))
+            return sorted(
+                p.stem.replace("_", " ") for p in folder.glob("*.txt"))
         except OSError as exc:
             print(f"Error: {exc}", file=sys.stderr)
             return []
+
+    @staticmethod
+    def invalid_maps() -> list[str]:
+        """Parse every map file; return one error message per invalid map."""
+        errors: list[str] = []
+        for difficulty in DIFFICULTIES:
+            try:
+                paths = sorted((MAPS_DIR / difficulty).glob("*.txt"))
+            except OSError as exc:
+                errors.append(str(exc))
+                continue
+            for path in paths:
+                try:
+                    MapParser.parse_map_file(str(path))
+                except (OSError, ParseError, UnicodeDecodeError,
+                        ValueError) as exc:
+                    errors.append(f"{path.relative_to(MAPS_DIR)}: {exc}")
+        return errors
 
 
 class GameState(Enum):
@@ -158,9 +181,8 @@ class UIElement:
     """A clickable UI element that highlights on hover."""
 
     @staticmethod
-    def create_surface_with_text(
-        text: str, font_size: float, text_rgb: Color, bg_rgb: Color
-    ) -> pygame.Surface:
+    def create_surface_with_text(text: str, font_size: float, text_rgb: Color,
+                                 bg_rgb: Color) -> pygame.Surface:
         """Return a surface with text written on it."""
         font = pygame.freetype.SysFont("Courier", int(font_size), bold=True)
         surface, _ = font.render(text=text, fgcolor=text_rgb, bgcolor=bg_rgb)
@@ -206,9 +228,8 @@ class UIElement:
         """Rect of the current image."""
         return self.rects[1] if self.mouse_over else self.rects[0]
 
-    def update(
-        self, mouse_pos: tuple[int, int], mouse_up: bool
-    ) -> Action | None:
+    def update(self, mouse_pos: tuple[int, int],
+               mouse_up: bool) -> Action | None:
         """Update hover state; return the action when clicked."""
         if self.rect.collidepoint(mouse_pos):
             self.mouse_over = True
@@ -257,9 +278,9 @@ class Gui:
         while True:
             mouse_up = False
             for event in pygame.event.get():
-                if event.type == pygame.QUIT or (
-                        event.type == pygame.KEYDOWN
-                        and event.key == pygame.K_ESCAPE):
+                if event.type == pygame.QUIT or (event.type == pygame.KEYDOWN
+                                                 and event.key
+                                                 == pygame.K_ESCAPE):
                     return GameState.QUIT
                 if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
                     mouse_up = True
@@ -275,20 +296,22 @@ class Gui:
             pygame.display.flip()
 
     @staticmethod
-    def map_select_screen(
-        screen: pygame.Surface, difficulty: str
-    ) -> tuple[GameState, str | None]:
+    def map_select_screen(screen: pygame.Surface,
+                          difficulty: str) -> tuple[GameState, str | None]:
         """Map selection screen; return the next state and chosen map."""
         cx = screen.get_width() // 2
         maps = MapFiles.get_maps(difficulty)
 
-        title = UIElement((cx, 60), difficulty.capitalize(), 40,
-                          LIGHT_BLUE, WHITE)
+        title = UIElement((cx, 60), difficulty.capitalize(), 40, LIGHT_BLUE,
+                          WHITE)
 
         map_buttons = [
-            UIElement((cx, 150 + i * 65), name, 25, LIGHT_BLUE, WHITE,
-                      action=name)
-            for i, name in enumerate(maps)
+            UIElement((cx, 150 + i * 65),
+                      name,
+                      25,
+                      LIGHT_BLUE,
+                      WHITE,
+                      action=name) for i, name in enumerate(maps)
         ]
         return_btn = UIElement(
             (cx, 150 + len(maps) * 65 + 40),
@@ -334,7 +357,7 @@ class Gui:
             lines = simulation.run()
         except (OSError, ParseError, NoPathError, ValueError) as exc:
             print(f"Error: {exc}", file=sys.stderr)
-            return GameState.TITLE
+            return GameState.QUIT
         print("\n".join(lines))
 
         zones = list(graph.zones.values())
@@ -350,7 +373,8 @@ class Gui:
             pygame.image.load(DRONE_IMAGE).convert_alpha(),
             (drone_size, drone_size),
         )
-        drone_font = pygame.freetype.SysFont("Arial", max(8, drone_size // 2),
+        drone_font = pygame.freetype.SysFont("Arial",
+                                             max(8, drone_size // 2),
                                              bold=True)
         drone_labels = [
             drone_font.render(str(drone + 1), RED)[0]
@@ -383,9 +407,10 @@ class Gui:
             screen.fill(WHITE)
 
             for connection in graph.connections:
-                MapDrawer.draw_connection(
-                    screen, graph.zones[connection.zone_a],
-                    graph.zones[connection.zone_b], offset, scale)
+                MapDrawer.draw_connection(screen,
+                                          graph.zones[connection.zone_a],
+                                          graph.zones[connection.zone_b],
+                                          offset, scale)
 
             for zone in zones:
                 MapDrawer.draw_hub(screen, zone, offset, scale, font)
@@ -394,12 +419,11 @@ class Gui:
             progress = min(elapsed * TURNS_PER_SECOND, len(lines))
             turn, fraction = int(progress), progress - int(progress)
             for drone in range(graph.nb_drones):
-                x0, y0 = MapDrawer.step_to_px(
-                    simulation.position(drone, turn),
-                    graph.zones, offset, scale)
+                x0, y0 = MapDrawer.step_to_px(simulation.position(drone, turn),
+                                              graph.zones, offset, scale)
                 x1, y1 = MapDrawer.step_to_px(
-                    simulation.position(drone, turn + 1),
-                    graph.zones, offset, scale)
+                    simulation.position(drone, turn + 1), graph.zones, offset,
+                    scale)
 
                 x0 += (drone % 3 - 1) * drone_size / 3
                 y0 += (drone // 3 % 3 - 1) * drone_size / 3
@@ -420,6 +444,12 @@ class Gui:
     @staticmethod
     def run_gui() -> None:
         """Open the menu window and run the screens until the user quits."""
+        errors = MapFiles.invalid_maps()
+        if errors:
+            for error in errors:
+                print(f"Error: {error}", file=sys.stderr)
+            sys.exit(1)
+
         pygame.init()
         screen = pygame.display.set_mode(MENU_SCREEN_SIZE)
         pygame.display.set_caption("Fly-in")

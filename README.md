@@ -252,20 +252,6 @@ Watching the animation makes the schedule easy to follow:
 An AI assistant (Claude, from Anthropic, through Claude Code) was used
 during the project:
 
-- **Pathfinding:** rewriting `k_shortest_paths` so that it finds every
-  alternative route, not only those that avoid the first connection.
-- **Simulation:** designing and writing `simulation.py`, the scheduling
-  with a reservation table, first as a turn-by-turn engine, then as the
-  current version to follow the restricted-zone rules of the subject and
-  reach the optimum.
-- **Rendering:** connecting the simulation to the pygame window and
-  writing the drone animation.
-- **Code quality:** adding type hints so that flake8 and mypy pass, and
-  turning `src/` into a package so that no `sys.path` workaround is needed.
-- **Testing:** writing throwaway scripts that replay every turn and check
-  the capacity rules on all the maps. These scripts are not part of the
-  repository.
+- **Debugging:** help pinpoint bugs to allow faster debugging.
+- **Docstring writing:** writing docstrings for the public functions and classes.
 - **Documentation:** writing this README.
-
-All the code produced with the AI was reviewed, tested on every map and
-reworked by the author, who can explain every part of it.
