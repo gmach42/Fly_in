@@ -39,7 +39,7 @@ class MapParser:
     @staticmethod
     def parse_int(text: str, line_no: int, field: str) -> int:
         """Parse a non-negative integer, e.g. the value of 'max_drones=4'."""
-        if not text.isdigit():
+        if not (text.isascii() and text.isdigit()):
             raise ParseError(
                 line_no, f"Expected an integer for {field!r}, got {text!r}")
         return int(text)
@@ -78,7 +78,7 @@ class MapParser:
             raise ParseError(line_no, MapParser.format_errors(exc)) from exc
 
     @staticmethod
-    def parse_hub(text: str, line_no: int) -> Zone:
+    def parse_hub(text: str, line_no: int, unlimited: bool = False) -> Zone:
         """Parse 'waypoint1 1 0 [color=blue max_drones=2]' into a Zone."""
         parts = text.split(maxsplit=3)
         if len(parts) < 3:
@@ -87,6 +87,9 @@ class MapParser:
         name, x, y = parts[:3]
         metadata = MapParser.parse_metadata(
             parts[3] if len(parts) == 4 else "", line_no, HUB_METADATA)
+        # max_drones is ignored on unlimited zones (the start and end hubs).
+        if unlimited:
+            metadata.pop("max_drones", None)
 
         data: dict[str, object] = {"name": name}
         try:
@@ -119,13 +122,42 @@ class MapParser:
         return MapParser.validate(Connection, data, line_no)
 
     @staticmethod
+    def check_zone(zone: Zone, zones: dict[str, Zone],
+                   positions: dict[tuple[int, int], str],
+                   line_no: int) -> None:
+        """Reject a zone whose name or position is already used."""
+        if zone.name in zones:
+            raise ParseError(line_no, f"Duplicate zone name: {zone.name!r}")
+        other = positions.get((zone.x, zone.y))
+        if other is not None:
+            raise ParseError(
+                line_no, f"Zones {other!r} and {zone.name!r} share position "
+                f"({zone.x}, {zone.y})")
+
+    @staticmethod
+    def check_connection(connection: Connection, zones: dict[str, Zone],
+                         pairs: set[frozenset[str]], line_no: int) -> None:
+        """Reject a connection to an undefined zone, or a duplicate one."""
+        for zone_name in (connection.zone_a, connection.zone_b):
+            if zone_name not in zones:
+                raise ParseError(
+                    line_no, f"Connection references undefined zone: "
+                    f"{zone_name!r} (zones must be defined before)")
+        if frozenset((connection.zone_a, connection.zone_b)) in pairs:
+            raise ParseError(
+                line_no, "Duplicate connection: "
+                f"{connection.zone_a}-{connection.zone_b}")
+
+    @staticmethod
     def parse_map_file(filepath: str) -> Graph:
         """Parse a map file into a Graph; raise ParseError if it is invalid."""
         nb_drones: int | None = None
         start: str | None = None
         end: str | None = None
-        zones: list[Zone] = []
+        zones: dict[str, Zone] = {}
+        positions: dict[tuple[int, int], str] = {}
         connections: list[Connection] = []
+        pairs: set[frozenset[str]] = set()
 
         if not os.path.isfile(filepath):
             raise ParseError(None, f"Not a regular file: {filepath!r}")
@@ -152,8 +184,13 @@ class MapParser:
                                          "Duplicate 'nb_drones' definition")
                     nb_drones = MapParser.parse_int(value, line_no,
                                                     "nb_drones")
+                    if nb_drones == 0:
+                        raise ParseError(
+                            line_no, "nb_drones must be a positive integer")
                 elif key in ("hub", "start_hub", "end_hub"):
-                    zone = MapParser.parse_hub(value, line_no)
+                    zone = MapParser.parse_hub(value, line_no,
+                                               unlimited=key != "hub")
+                    MapParser.check_zone(zone, zones, positions, line_no)
                     if key == "start_hub":
                         if start is not None:
                             raise ParseError(
@@ -164,10 +201,15 @@ class MapParser:
                             raise ParseError(
                                 line_no, "Multiple 'end_hub' definitions")
                         end = zone.name
-                    zones.append(zone)
+                    zones[zone.name] = zone
+                    positions[(zone.x, zone.y)] = zone.name
                 elif key == "connection":
-                    connections.append(
-                        MapParser.parse_connection(value, line_no))
+                    connection = MapParser.parse_connection(value, line_no)
+                    MapParser.check_connection(connection, zones, pairs,
+                                               line_no)
+                    pairs.add(frozenset((connection.zone_a,
+                                         connection.zone_b)))
+                    connections.append(connection)
                 else:
                     raise ParseError(line_no, f"Unknown key: {key!r}")
 
