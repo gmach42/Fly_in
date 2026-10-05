@@ -1,9 +1,11 @@
 """Parser turning a map file into a Graph."""
 
 import os
+import sys
 from typing import TypeVar
 
 from pydantic import BaseModel, ValidationError
+from pygame.colordict import THECOLORS
 
 from .pydantic_models import Connection, Graph, Zone
 
@@ -11,7 +13,7 @@ M = TypeVar("M", bound=BaseModel)
 
 MAX_FILE_SIZE = 1_000_000
 HUB_METADATA = ("zone", "color", "max_drones")
-CONNECTION_METADATA = ("max_link_capacity",)
+CONNECTION_METADATA = ("max_link_capacity", )
 
 
 class ParseError(Exception):
@@ -54,7 +56,10 @@ class MapParser:
             raise ParseError(line_no, f"Malformed metadata block: {text!r}")
 
         metadata: dict[str, str] = {}
-        for token in text[1:-1].split():
+        for token in text[1:-1].split(" "):
+            if not token:
+                raise ParseError(line_no, "Metadata entries must be separated "
+                                 f"by a single space: {text!r}")
             key, sep, value = token.partition("=")
             if not sep:
                 raise ParseError(line_no,
@@ -78,7 +83,8 @@ class MapParser:
             raise ParseError(line_no, MapParser.format_errors(exc)) from exc
 
     @staticmethod
-    def parse_hub(text: str, line_no: int, unlimited: bool = False) -> Zone:
+    def parse_hub(text: str, line_no: int, filepath: str,
+                  unlimited: bool = False) -> Zone:
         """Parse 'waypoint1 1 0 [color=blue max_drones=2]' into a Zone."""
         parts = text.split(maxsplit=3)
         if len(parts) < 3:
@@ -99,10 +105,16 @@ class MapParser:
         if "zone" in metadata:
             data["zone_type"] = metadata["zone"]
         if "color" in metadata:
-            data["color"] = metadata["color"]
+            color = metadata["color"].lower()
+            if color in THECOLORS:
+                data["color"] = color
+            else:
+                print(f"{filepath}:{line_no}: unknown color "
+                      f"{metadata['color']!r}, using default color",
+                      file=sys.stderr)
         if "max_drones" in metadata:
-            data["max_drones"] = MapParser.parse_int(
-                metadata["max_drones"], line_no, "max_drones")
+            data["max_drones"] = MapParser.parse_int(metadata["max_drones"],
+                                                     line_no, "max_drones")
         return MapParser.validate(Zone, data, line_no)
 
     @staticmethod
@@ -123,8 +135,8 @@ class MapParser:
 
     @staticmethod
     def check_zone(zone: Zone, zones: dict[str, Zone],
-                   positions: dict[tuple[int, int], str],
-                   line_no: int) -> None:
+                   positions: dict[tuple[int, int],
+                                   str], line_no: int) -> None:
         """Reject a zone whose name or position is already used."""
         if zone.name in zones:
             raise ParseError(line_no, f"Duplicate zone name: {zone.name!r}")
@@ -162,8 +174,8 @@ class MapParser:
         if not os.path.isfile(filepath):
             raise ParseError(None, f"Not a regular file: {filepath!r}")
         if os.path.getsize(filepath) > MAX_FILE_SIZE:
-            raise ParseError(
-                None, f"File is larger than {MAX_FILE_SIZE} bytes")
+            raise ParseError(None,
+                             f"File is larger than {MAX_FILE_SIZE} bytes")
         with open(filepath) as f:
             for line_no, raw_line in enumerate(f, start=1):
                 line = raw_line.strip()
@@ -188,7 +200,9 @@ class MapParser:
                         raise ParseError(
                             line_no, "nb_drones must be a positive integer")
                 elif key in ("hub", "start_hub", "end_hub"):
-                    zone = MapParser.parse_hub(value, line_no,
+                    zone = MapParser.parse_hub(value,
+                                               line_no,
+                                               filepath,
                                                unlimited=key != "hub")
                     MapParser.check_zone(zone, zones, positions, line_no)
                     if key == "start_hub":
@@ -198,8 +212,8 @@ class MapParser:
                         start = zone.name
                     elif key == "end_hub":
                         if end is not None:
-                            raise ParseError(
-                                line_no, "Multiple 'end_hub' definitions")
+                            raise ParseError(line_no,
+                                             "Multiple 'end_hub' definitions")
                         end = zone.name
                     zones[zone.name] = zone
                     positions[(zone.x, zone.y)] = zone.name
@@ -207,8 +221,8 @@ class MapParser:
                     connection = MapParser.parse_connection(value, line_no)
                     MapParser.check_connection(connection, zones, pairs,
                                                line_no)
-                    pairs.add(frozenset((connection.zone_a,
-                                         connection.zone_b)))
+                    pairs.add(frozenset(
+                        (connection.zone_a, connection.zone_b)))
                     connections.append(connection)
                 else:
                     raise ParseError(line_no, f"Unknown key: {key!r}")
