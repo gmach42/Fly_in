@@ -1,13 +1,12 @@
 """Pygame interface: menus and drone animation."""
 
+import os
 import sys
 from enum import Enum
 from pathlib import Path
 
 import pygame
 import pygame.freetype
-
-import os
 
 from .parser import MapParser, ParseError
 from .pathfinding import NoPathError
@@ -34,7 +33,7 @@ HUB_RADIUS = 30
 DRONE_SIZE_RATIO = 2.5
 BOTTOM_MARGIN = 120
 MIN_WINDOW_WIDTH = 400
-SCREEN_RATIO = 0.9
+SCREEN_RATIO = 1
 LABEL_GAP = 8
 TURNS_PER_SECOND = 1.0
 END_DELAY = 2.0
@@ -477,6 +476,7 @@ class Gui:
                 print(f"Error: {error}", file=sys.stderr)
             sys.exit(1)
 
+        os.environ['SDL_VIDEO_CENTERED'] = '1'
         pygame.init()
         screen = pygame.display.set_mode(MENU_SCREEN_SIZE)
         pygame.display.set_caption("Fly-in")
@@ -488,7 +488,6 @@ class Gui:
         while True:
             if game_state == GameState.TITLE:
                 if screen.get_size() != MENU_SCREEN_SIZE:
-                    os.environ['SDL_VIDEO_CENTERED'] = '1'
                     screen = pygame.display.set_mode(MENU_SCREEN_SIZE)
                 result = Gui.title_screen(screen)
                 if isinstance(result, GameState):
