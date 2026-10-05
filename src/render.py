@@ -118,7 +118,10 @@ class MapDrawer:
         """Draw a zone circle in its map color, with its name below/above."""
         pos = MapDrawer.grid_to_px(zone.x, zone.y, offset, scale)
         radius = MapDrawer.hub_radius(scale)
-        color = pygame.Color(zone.color or "gray")
+        try:
+            color = pygame.Color(zone.color or "gray")
+        except ValueError:
+            color = pygame.Color("gray")
         pygame.draw.circle(screen, color, pos, radius)
         label_surf, label_rect = font.render(zone.name, BLACK)
         label_rect.centerx = int(pos[0])

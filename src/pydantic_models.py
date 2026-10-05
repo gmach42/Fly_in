@@ -138,22 +138,18 @@ class Graph(BaseModel):
             if other != zone.name:
                 raise ValueError(
                     f"Zones {other!r} and {zone.name!r} share position "
-                    f"({zone.x}, {zone.y})"
-                )
+                    f"({zone.x}, {zone.y})")
 
         seen_pairs: set[frozenset[str]] = set()
         for connection in self.connections:
             for zone_name in (connection.zone_a, connection.zone_b):
                 if zone_name not in self.zones:
                     raise ValueError(
-                        f"Connection references unknown zone: {zone_name!r}"
-                    )
+                        f"Connection references unknown zone: {zone_name!r}")
             pair = frozenset((connection.zone_a, connection.zone_b))
             if pair in seen_pairs:
-                raise ValueError(
-                    "Duplicate connection: "
-                    f"{connection.zone_a}-{connection.zone_b}"
-                )
+                raise ValueError("Duplicate connection: "
+                                 f"{connection.zone_a}-{connection.zone_b}")
             seen_pairs.add(pair)
         return self
 
@@ -168,15 +164,13 @@ class Graph(BaseModel):
         for zone_name in (connection.zone_a, connection.zone_b):
             if zone_name not in self.zones:
                 raise ValueError(
-                    f"Connection references unknown zone: {zone_name!r}"
-                )
+                    f"Connection references unknown zone: {zone_name!r}")
         self.connections.append(connection)
 
     def get_neighbors(self, zone_name: str) -> list[str]:
         """Return a list of neighboring zone names for the given zone."""
         return [
-            connection.other_side(zone_name)
-            for connection in self.connections
+            connection.other_side(zone_name) for connection in self.connections
             if connection.links(zone_name)
         ]
 

@@ -1,11 +1,9 @@
 """Parser turning a map file into a Graph."""
 
 import os
-import sys
 from typing import TypeVar
 
 from pydantic import BaseModel, ValidationError
-from pygame.colordict import THECOLORS
 
 from .pydantic_models import Connection, Graph, Zone
 
@@ -83,8 +81,7 @@ class MapParser:
             raise ParseError(line_no, MapParser.format_errors(exc)) from exc
 
     @staticmethod
-    def parse_hub(text: str, line_no: int, filepath: str,
-                  unlimited: bool = False) -> Zone:
+    def parse_hub(text: str, line_no: int, unlimited: bool = False) -> Zone:
         """Parse 'waypoint1 1 0 [color=blue max_drones=2]' into a Zone."""
         parts = text.split(maxsplit=3)
         if len(parts) < 3:
@@ -105,13 +102,7 @@ class MapParser:
         if "zone" in metadata:
             data["zone_type"] = metadata["zone"]
         if "color" in metadata:
-            color = metadata["color"].lower()
-            if color in THECOLORS:
-                data["color"] = color
-            else:
-                print(f"{filepath}:{line_no}: unknown color "
-                      f"{metadata['color']!r}, using default color",
-                      file=sys.stderr)
+            data["color"] = metadata["color"]
         if "max_drones" in metadata:
             data["max_drones"] = MapParser.parse_int(metadata["max_drones"],
                                                      line_no, "max_drones")
@@ -202,7 +193,6 @@ class MapParser:
                 elif key in ("hub", "start_hub", "end_hub"):
                     zone = MapParser.parse_hub(value,
                                                line_no,
-                                               filepath,
                                                unlimited=key != "hub")
                     MapParser.check_zone(zone, zones, positions, line_no)
                     if key == "start_hub":
