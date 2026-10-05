@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Dependancies for the Fly-in project."
 readme = "README.md"
 requires-python = ">=3.13"
-dependencies = ["pygame-ce>=2.5"]
+dependencies = ["pydantic>=2.0","pygame-ce>=2.5"]
 
 [dependency-groups]
 dev = [
