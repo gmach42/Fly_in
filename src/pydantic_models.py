@@ -14,6 +14,7 @@ ZONE_MOVE_COST: dict[ZoneType, float] = {
 }
 
 MAX_COORDINATE = 100
+MAX_DRONES = 100
 
 
 class Zone(BaseModel):
@@ -108,6 +109,8 @@ class Graph(BaseModel):
         """Ensure the number of drones is a positive integer."""
         if v <= 0:
             raise ValueError("nb_drones must be a positive integer")
+        if v > MAX_DRONES:
+            raise ValueError(f"nb_drones cannot exceed {MAX_DRONES}")
         return v
 
     @field_validator("zones", mode="before")

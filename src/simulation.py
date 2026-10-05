@@ -51,8 +51,9 @@ class Simulation:
             if self.zone_free(here, turn + 1):
                 next_states.append((turn + 1, index))
             arrival = turn + (2 if self.restricted(target) else 1)
-            # A restricted connection is freed on the arrival turn.
-            if self.link_free(here, target, turn + 1):
+            if all(
+                    self.link_free(here, target, t)
+                    for t in range(turn + 1, arrival + 1)):
                 if self.zone_free(target, arrival):
                     next_states.append((arrival, index + 1))
             for state in next_states:
@@ -82,12 +83,11 @@ class Simulation:
     def reserve(self, plan: list[Step]) -> None:
         """Book the zone and link slots used by plan."""
         for turn in range(1, len(plan)):
-            (prev_zone, prev_target), (zone, target) = plan[turn - 1:turn + 1]
+            (prev_zone, _), (zone, target) = plan[turn - 1:turn + 1]
             if zone == target and self.is_limited(zone):
                 key = (zone, turn)
                 self.zone_slots[key] = self.zone_slots.get(key, 0) + 1
-            # The link is used on the turn the drone leaves a zone only.
-            if prev_zone == prev_target and prev_zone != target:
+            if prev_zone != target:
                 link = (frozenset((prev_zone, target)), turn)
                 self.link_slots[link] = self.link_slots.get(link, 0) + 1
         self.last_turn = max(self.last_turn, len(plan) - 1)
