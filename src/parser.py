@@ -56,8 +56,9 @@ class MapParser:
         metadata: dict[str, str] = {}
         for token in text[1:-1].split(" "):
             if not token:
-                raise ParseError(line_no, "Metadata entries must be separated "
-                                 f"by a single space: {text!r}")
+                raise ParseError(
+                    line_no, "Metadata entries must be separated "
+                    f"by a single space: {text!r}")
             key, sep, value = token.partition("=")
             if not sep:
                 raise ParseError(line_no,
@@ -81,7 +82,7 @@ class MapParser:
             raise ParseError(line_no, MapParser.format_errors(exc)) from exc
 
     @staticmethod
-    def parse_hub(text: str, line_no: int, unlimited: bool = False) -> Zone:
+    def parse_hub(text: str, line_no: int) -> Zone:
         """Parse 'waypoint1 1 0 [color=blue max_drones=2]' into a Zone."""
         parts = text.split(maxsplit=3)
         if len(parts) < 3:
@@ -90,9 +91,6 @@ class MapParser:
         name, x, y = parts[:3]
         metadata = MapParser.parse_metadata(
             parts[3] if len(parts) == 4 else "", line_no, HUB_METADATA)
-        # max_drones is ignored on unlimited zones (the start and end hubs).
-        if unlimited:
-            metadata.pop("max_drones", None)
 
         data: dict[str, object] = {"name": name}
         try:
@@ -191,9 +189,7 @@ class MapParser:
                         raise ParseError(
                             line_no, "nb_drones must be a positive integer")
                 elif key in ("hub", "start_hub", "end_hub"):
-                    zone = MapParser.parse_hub(value,
-                                               line_no,
-                                               unlimited=key != "hub")
+                    zone = MapParser.parse_hub(value, line_no)
                     MapParser.check_zone(zone, zones, positions, line_no)
                     if key == "start_hub":
                         if start is not None:
