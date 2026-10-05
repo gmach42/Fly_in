@@ -124,6 +124,7 @@ class PathFinder:
         counter = 0
 
         def push(excluded: frozenset[frozenset[str]]) -> None:
+            """Run A* without the excluded connections, keep a new path."""
             nonlocal counter
             if excluded in tried:
                 return

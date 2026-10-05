@@ -12,9 +12,6 @@ run:
 debug:
 	$(PYTHON) -m pdb -m src
 
-test-verbose:
-	$(PYTEST) -v
-
 clean:
 	find . -type d -name "__pycache__" -prune -exec rm -rf {} + 2>/dev/null || true
 	find . -type d -name ".pytest_cache" -prune -exec rm -rf {} + 2>/dev/null || true
@@ -29,4 +26,4 @@ lint-strict:
 	$(FLAKE8) $(LINT_PATHS)
 	$(MYPY) $(LINT_PATHS) --strict
 
-.PHONY: install run debug test test-verbose clean lint lint-strict help
+.PHONY: install run debug clean lint lint-strict

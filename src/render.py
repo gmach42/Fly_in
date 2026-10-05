@@ -396,10 +396,14 @@ class Gui:
         # A stagger is used to avoid overlapping labels
         stagger = MapDrawer.needs_stagger(zones, scale, font)
         drone_size = int(MapDrawer.hub_radius(scale) * DRONE_SIZE_RATIO)
-        drone_image = pygame.transform.smoothscale(
-            pygame.image.load(DRONE_IMAGE).convert_alpha(),
-            (drone_size, drone_size),
-        )
+        try:
+            drone_image = pygame.transform.smoothscale(
+                pygame.image.load(DRONE_IMAGE).convert_alpha(),
+                (drone_size, drone_size),
+            )
+        except (OSError, pygame.error) as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return GameState.QUIT
         drone_font = pygame.freetype.SysFont("Arial",
                                              max(8, drone_size // 2),
                                              bold=True)
