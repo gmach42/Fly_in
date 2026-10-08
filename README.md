@@ -23,22 +23,21 @@ The program:
   the subject;
 - animates the drones on a drawing of the network with pygame.
 
-Number of turns on the maps provided, compared to the optimum given by the
-subject. Every map, including the optional challenger map, is solved in its
-optimal number of turns:
+Number of turns on the maps provided. The optional challenger map is solved
+in 43 turns, under the 45-turn record given with the maps:
 
-| Map | Drones | Turns | Optimum |
-|---|---|---|---|
-| easy/01_linear_path | 2 | 4 | 4 |
-| easy/02_simple_fork | 4 | 4 | 4 |
-| easy/03_basic_capacity | 4 | 4 | 4 |
-| medium/01_dead_end_trap | 5 | 8 | 8 |
-| medium/02_circular_loop | 6 | 10 | 10 |
-| medium/03_priority_puzzle | 5 | 6 | 6 |
-| hard/01_maze_nightmare | 8 | 13 | 13 |
-| hard/02_capacity_hell | 12 | 16 | 16 |
-| hard/03_ultimate_challenge | 15 | 26 | 26 |
-| challenger/01_the_impossible_dream | 25 | 43 | 43 |
+| Map | Drones | Turns |
+|---|---|---|
+| easy/01_linear_path | 2 | 4 |
+| easy/02_simple_fork | 4 | 4 |
+| easy/03_basic_capacity | 4 | 4 |
+| medium/01_dead_end_trap | 5 | 8 |
+| medium/02_circular_loop | 6 | 15 |
+| medium/03_priority_puzzle | 5 | 7 |
+| hard/01_maze_nightmare | 8 | 13 |
+| hard/02_capacity_hell | 12 | 16 |
+| hard/03_ultimate_challenge | 15 | 26 |
+| challenger/01_the_impossible_dream | 25 | 43 |
 
 ## Instructions
 
@@ -109,19 +108,20 @@ connection of capacity 1, then `goal`:
 
 ```
 D1-a
-D1-a-restrictedZone D2-a
-D1-restrictedZone D2-a-restrictedZone
-D1-goal D2-restrictedZone
+D1-a-restrictedZone
+D1-restrictedZone D2-a
+D1-goal D2-a-restrictedZone
+D2-restrictedZone
 D2-goal
 ```
 
-The connection to the restricted zone is freed on the turn `D1` lands in
-the restricted zone, so `D2` takes off during that same turn.
+The connection to the restricted zone is used during both turns of the
+flight, so `D2` can only take off after `D1` has landed.
 
 Errors, for example an unknown zone type or a map with no path:
 
 ```
-Error: Line 3: 
+Error: Line 3:
   zone_type: Input should be 'normal', 'priority', 'restricted' or 'blocked'
 Error: No path from 'a' to 'g'
 ```
@@ -181,18 +181,17 @@ drones have to respect:
 - zone slots `(zone, turn)`: at most `max_drones` drones in a zone at the
   end of a turn (the start and end hubs are unlimited);
 - link slots `(connection, turn)`: at most `max_link_capacity` drones
-  starting to cross a connection during a turn.
+  using a connection during a turn.
 
 This table implements the movement rules of the subject:
 
 - only the occupancy at the end of a turn is counted, so a zone freed during
   a turn can be entered in the same turn (a column of drones advances one
   step per turn);
-- a move into a restricted zone takes 2 turns. The drone takes a link slot
-  on the first turn, and a slot must be free in the zone on the second turn.
-  The connection is freed on the turn the drone lands, so another drone can
-  take off on it during that same turn. A drone therefore never starts a
-  flight it cannot finish, and never waits on a connection.
+- a move into a restricted zone takes 2 turns. The drone uses the connection
+  during both turns, and a slot must be free in the zone on the second turn.
+  A drone therefore never starts a flight it cannot finish, and never waits
+  on a connection.
 
 Why this approach:
 
@@ -215,9 +214,7 @@ Why this approach:
 - **Scheduling:** for each of the D drones and each of the k paths, the
   search visits at most L × H states, where L is the path length and H the
   number of turns explored (the last reserved turn plus 2 × L). The total is
-  about O(D × k × L × H). H grows with the number of drones, so the
-  scheduling is roughly quadratic in D: about 1 second for 1 000 drones on
-  a small map.
+  about O(D × k × L × H).
 - **Memory:** the reservation table holds one entry per zone or link used
   per turn, so O(D × T) for T turns, plus one plan of T steps per drone.
 
